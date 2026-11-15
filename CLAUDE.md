@@ -16,3 +16,25 @@ portfolio). Phase 2 = Android app in `android/`; phase 3 = macOS app (SwiftUI).
   pure mapping in `ui/HomeState.kt` (`cardModel`), tested in `HomeStateTest`. Settings prefs in `android/Settings.kt`.
 - Debug-only update testing: `adb shell "run-as com.vuhpquang.appdepot.dev sh -c 'echo zentask-android=0.0.1 > files/pretend.txt'"`
   makes an installed app look outdated (`slug=version` lines; ignored in release builds). Remove the file afterwards.
+
+## Android: commands, release, testing
+
+```bash
+cd android && export JAVA_HOME=/Users/quangvu/Library/Java/JavaVirtualMachines/corretto-17.0.13/Contents/Home
+./gradlew :app:testDebugUnitTest :app:assembleDebug     # tests + debug APK (.dev)
+android/scripts/release.sh X.Y.Z notes.md               # tests, signed APK, signer check, tag android-vX.Y.Z, GitHub release (not Latest)
+PUBLISH=0 android/scripts/release.sh X.Y.Z notes.md     # office: commit + tag locally only
+scripts/depot-publish.sh app-depot-android              # from the hub, after the release: puts it in the catalog
+```
+
+- Signing key: `~/.config/app-depot-signing/app-depot-release.jks` + `keystore.properties`; the expected
+  signer fingerprint is committed in `android/scripts/release-signer.sha256` and checked by `release.sh`.
+  Lose the keystore and installed copies can never update (a new key = reinstall everywhere), so keep
+  a backup of that folder (password manager or encrypted disk), outside the repo.
+- Emulator (`emulator-5554`): install the debug build (`.dev`) next to the release one. The debug build
+  has a **Server** field in Settings (debuggable builds only; blank = vuhpquang.com) to point at a
+  preview catalog. To fake an outdated app write `slug=version` into `files/pretend.txt` (see above) and
+  remove it afterwards.
+- Other apps hand over updates to App Depot: ZenTask Android checks whether `com.vuhpquang.appdepot`
+  is installed and, if so, shows "Updates are managed by App Depot" instead of its own updater.
+  Personal Wiki Android publishes itself to the catalog from its CI (see the hub rule `app-depot.md`).
