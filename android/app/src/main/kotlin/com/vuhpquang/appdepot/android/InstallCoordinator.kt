@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.util.Log
 import com.vuhpquang.appdepot.core.CatalogApp
 import com.vuhpquang.appdepot.core.DepotEvent
 import com.vuhpquang.appdepot.core.EventSink
@@ -11,10 +12,15 @@ import com.vuhpquang.appdepot.core.InstallOutcome
 import com.vuhpquang.appdepot.core.InstallProgress
 import com.vuhpquang.appdepot.core.SELF_SLUG
 import com.vuhpquang.appdepot.core.VerifyResult
+import com.vuhpquang.appdepot.core.claimable
 import com.vuhpquang.appdepot.core.runInstallQueue
+import com.vuhpquang.appdepot.core.safeFileSegment
 import com.vuhpquang.appdepot.core.signerMatches
 import com.vuhpquang.appdepot.core.verifyDownload
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,13 +41,19 @@ class InstallCoordinator(
 ) {
     val installer = ApkInstaller(context)
     private val lock = Mutex()
+    private val claimLock = Any()
     private val _progress = MutableStateFlow<Map<String, InstallProgress>>(emptyMap())
     val progress: StateFlow<Map<String, InstallProgress>> = _progress.asStateFlow()
     // Written only while holding [lock], so there is at most one install in flight and one current slug.
     @Volatile private var currentSlug: String? = null
 
     init {
-        File(context.cacheDir, "downloads").listFiles()?.forEach { it.delete() }
+        // Leftovers from a killed install; off the main thread, the Application creates us lazily from anywhere.
+        val started = System.currentTimeMillis()
+        CoroutineScope(Dispatchers.IO).launch {
+            // Only files older than this process's coordinator: an install may already be writing a new one.
+            runCatching { File(context.cacheDir, "downloads").listFiles()?.filter { it.lastModified() < started }?.forEach { it.delete() } }
+        }
         installer.onPendingUserAction = { currentSlug?.let { set(it, InstallProgress.NeedsUserAction) } }
         installer.onConfirmLaunched = { currentSlug?.let { set(it, InstallProgress.Installing) } }
     }
@@ -51,40 +63,80 @@ class InstallCoordinator(
     /** Forget a finished/failed state once the UI has shown it. */
     fun clear(slug: String) = _progress.update { it - slug }
 
-    suspend fun install(app: CatalogApp) {
-        lock.withLock { runOne(app) }
+    /** Marks the slugs that may start as Queued, atomically; returns them (empty when all are already busy). */
+    private fun claim(slugs: List<String>): List<String> = synchronized(claimLock) {
+        val ok = claimable(_progress.value, slugs, currentSlug)
+        if (ok.isNotEmpty()) _progress.update { m -> m + ok.associateWith { InstallProgress.Queued } }
+        ok
     }
 
-    suspend fun updateAll(apps: List<CatalogApp>) {
+    private fun unqueue(slugs: List<String>) =
+        _progress.update { m -> m.filter { (k, v) -> !(k in slugs && v == InstallProgress.Queued) } }
+
+    suspend fun install(app: CatalogApp, interactive: Boolean = true): InstallOutcome? {
+        if (claim(listOf(app.slug)).isEmpty()) return null
         try {
-            lock.withLock { runInstallQueue(apps, { a -> runOne(a) }) { slug, p -> set(slug, p) } }
+            return lock.withLock { runOne(app, interactive) }
         } catch (e: CancellationException) {
-            _progress.update { m -> m.filterValues { it != InstallProgress.Queued } }
+            unqueue(listOf(app.slug))
             throw e
         }
     }
 
-    private suspend fun runOne(app: CatalogApp): InstallOutcome {
+    /** Installs the apps one at a time (self last). Returns each outcome; apps already busy are left out. */
+    suspend fun updateAll(apps: List<CatalogApp>, interactive: Boolean = true): Map<String, InstallOutcome> {
+        val mine = claim(apps.map { it.slug }).toSet()
+        val todo = apps.filter { it.slug in mine }
+        if (todo.isEmpty()) return emptyMap()
+        try {
+            return lock.withLock { runInstallQueue(todo, { a -> runOne(a, interactive) }) { slug, p -> set(slug, p) } }
+        } catch (e: CancellationException) {
+            unqueue(todo.map { it.slug })
+            throw e
+        }
+    }
+
+    private suspend fun runOne(app: CatalogApp, interactive: Boolean): InstallOutcome {
+        try {
+            return runOneUnsafe(app, interactive)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("InstallCoordinator", "Install of ${app.slug} crashed", e)
+            return finish(app, null, InstallOutcome.Failed("Something went wrong installing ${app.name}. Try again."))
+        }
+    }
+
+    private suspend fun runOneUnsafe(app: CatalogApp, interactive: Boolean): InstallOutcome {
         val release = app.latest
         if (release == null) return finish(app, null, InstallOutcome.Failed("${app.name} has no release to install."))
         val fromVersion = installed.versionOf(app.appId)
+        // A second request queued behind the first one: the work is already done.
+        if (fromVersion == release.version) {
+            set(app.slug, InstallProgress.Done(release.version))
+            return InstallOutcome.Success(release.version)
+        }
         if (!context.packageManager.canRequestPackageInstalls()) {
             set(app.slug, InstallProgress.NeedsPermission)
-            context.startActivity(
-                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+            if (interactive) {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
             return InstallOutcome.NeedsPermission
         }
         val dir = File(context.cacheDir, "downloads")
-        val file = File(dir, "${app.slug}-${release.version}.apk")
+        val file = File(dir, "${app.slug}-${safeFileSegment(release.version)}.apk")
         currentSlug = app.slug
         try {
             set(app.slug, InstallProgress.Downloading(0))
             try {
-                downloader.download(release.downloadUrl, file) { set(app.slug, InstallProgress.Downloading(it)) }
+                downloader.download(release.downloadUrl, file, release.size) { set(app.slug, InstallProgress.Downloading(it)) }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: DamagedDownloadException) {
+                return finish(app, fromVersion, InstallOutcome.Failed("The download was damaged. Try again."))
             } catch (e: Exception) {
                 return finish(app, fromVersion, InstallOutcome.Failed("The download failed. Check the connection and try again."))
             }
@@ -96,7 +148,7 @@ class InstallCoordinator(
                 return finish(app, fromVersion, InstallOutcome.Failed("This file isn't signed like ${app.name}. It wasn't installed."))
             }
             set(app.slug, InstallProgress.Installing)
-            val outcome = when (val o = installer.install(file, app.appId, app.name)) {
+            val outcome = when (val o = installer.install(file, app.appId, app.name, interactive)) {
                 is InstallOutcome.Success -> InstallOutcome.Success(release.version)
                 else -> o
             }

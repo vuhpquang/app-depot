@@ -15,6 +15,8 @@ import com.vuhpquang.appdepot.android.Settings
 import com.vuhpquang.appdepot.core.DepotEvent
 import com.vuhpquang.appdepot.core.SELF_SLUG
 import com.vuhpquang.appdepot.ui.parsePretendVersions
+import android.util.Log
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,7 +25,13 @@ import java.io.File
 
 class AppDepotApplication : Application() {
     /** Outlives every screen: installs and refreshes started from the UI run here. */
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, e -> Log.w("AppDepot", "uncaught error in app scope", e) },
+    )
+
+    /** True while MainActivity is visible; background work avoids restarting the app then. */
+    @Volatile var foreground = false
 
     private val versionNameOrNull: String? by lazy {
         runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()

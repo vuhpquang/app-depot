@@ -53,4 +53,34 @@ class InstallQueueTest {
         assertEquals(InstallOutcome.Failed("The install wasn't confirmed. Try again."), results["a"])
         assertEquals(InstallOutcome.Success("2"), results["b"])
     }
+
+    @Test fun secondRequestForBusySlugIsIgnored() {
+        val current = mapOf("a" to InstallProgress.Downloading(10), "b" to InstallProgress.Queued, "c" to InstallProgress.Failed("x"))
+        assertEquals(listOf("c", "d"), claimable(current, listOf("a", "b", "c", "d", "d"), null))
+    }
+
+    @Test fun needsUserActionBlocksOnlyWhileInFlight() {
+        val current = mapOf("a" to InstallProgress.NeedsUserAction)
+        assertEquals(emptyList<String>(), claimable(current, listOf("a"), "a"))
+        assertEquals(listOf("a"), claimable(current, listOf("a"), null))
+    }
+
+    @Test fun claimedSlugsRunOnceThroughTheQueue() = runTest {
+        val ran = mutableListOf<String>()
+        val current = mutableMapOf<String, InstallProgress>()
+        val apps = listOf(app("a"), app("b"))
+        // Two overlapping requests: the second finds both slugs queued and claims nothing.
+        val first = claimable(current, apps.map { it.slug }, null)
+        first.forEach { current[it] = InstallProgress.Queued }
+        val second = claimable(current, apps.map { it.slug }, null)
+        val results = runInstallQueue(apps.filter { it.slug in first }, { a -> ran += a.slug; InstallOutcome.Success("1") }) { _, _ -> }
+        assertEquals(emptyList<String>(), second)
+        assertEquals(listOf("a", "b"), ran)
+        assertEquals(setOf("a", "b"), results.keys)
+    }
+
+    @Test fun versionIsMadeFileNameSafe() {
+        assertEquals("1.2.3-beta_1", safeFileSegment("1.2.3-beta+1"))
+        assertEquals(".._.._etc_passwd", safeFileSegment("../../etc/passwd"))
+    }
 }

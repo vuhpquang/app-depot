@@ -24,6 +24,10 @@ class ApkInstaller(private val context: Context) {
     private val waiting = ConcurrentHashMap<Int, CompletableDeferred<SessionResult>>()
     @Volatile var onPendingUserAction: (sessionId: Int) -> Unit = {}
     @Volatile var onConfirmLaunched: (sessionId: Int) -> Unit = {}
+    private val backgroundSessions = java.util.Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())
+
+    /** True unless the session was started by a background run (which never opens the confirm screen). */
+    internal fun isInteractive(sessionId: Int) = sessionId !in backgroundSessions
 
     /** SHA-256 (lowercase hex) of the first signing certificate of the APK at [path], or null if unreadable. */
     fun apkSignerSha256(path: String): String? {
@@ -35,16 +39,18 @@ class ApkInstaller(private val context: Context) {
     }
 
     /** Commits [apk] as an update/install of [appId] and waits for the final result. */
-    suspend fun install(apk: File, appId: String, appName: String): InstallOutcome {
+    suspend fun install(apk: File, appId: String, appName: String, interactive: Boolean = true): InstallOutcome {
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(appId)
             setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         }
-        val id = installer.createSession(params)
+        var id = -1
         val result = CompletableDeferred<SessionResult>()
-        waiting[id] = result
         try {
+            id = installer.createSession(params)
+            waiting[id] = result
+            if (!interactive) backgroundSessions += id
             withContext(Dispatchers.IO) {
                 installer.openSession(id).use { session ->
                     session.openWrite("base.apk", 0, apk.length()).use { out ->
@@ -66,6 +72,7 @@ class ApkInstaller(private val context: Context) {
                 return InstallOutcome.Failed("The install wasn't confirmed. Try again.")
             }
             return when (r.status) {
+                PackageInstaller.STATUS_PENDING_USER_ACTION -> InstallOutcome.NeedsUserAction
                 PackageInstaller.STATUS_SUCCESS -> InstallOutcome.Success("")
                 PackageInstaller.STATUS_FAILURE_ABORTED -> InstallOutcome.Failed("Install cancelled")
                 PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
@@ -75,14 +82,17 @@ class ApkInstaller(private val context: Context) {
                 )
             }
         } catch (e: CancellationException) {
-            runCatching { installer.abandonSession(id) }
+            if (id >= 0) runCatching { installer.abandonSession(id) }
             throw e
         } catch (e: Exception) {
             Log.w("ApkInstaller", "Install of $appId failed", e)
-            runCatching { installer.abandonSession(id) }
+            if (id >= 0) runCatching { installer.abandonSession(id) }
             return InstallOutcome.Failed("Android couldn't install $appName. Try again.")
         } finally {
-            waiting.remove(id)
+            if (id >= 0) {
+                waiting.remove(id)
+                backgroundSessions.remove(id)
+            }
         }
     }
 
@@ -102,6 +112,12 @@ class InstallResultReceiver : BroadcastReceiver() {
         val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
         val coordinator = (context.applicationContext as com.vuhpquang.appdepot.AppDepotApplication).coordinator
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            if (!coordinator.installer.isInteractive(sessionId)) {
+                // Background run: never pop the confirm screen. Give up on the session; the worker posts a notification.
+                runCatching { context.packageManager.packageInstaller.abandonSession(sessionId) }
+                coordinator.installer.onResult(sessionId, PackageInstaller.STATUS_PENDING_USER_ACTION, null)
+                return
+            }
             val confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java) ?: return
             coordinator.installer.onPendingUserAction(sessionId)
             try {

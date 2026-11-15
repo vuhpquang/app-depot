@@ -119,6 +119,8 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             catalog.value = withContext(Dispatchers.IO) { app.catalog.cached() }
             reloadInstalled()
+            // The cached catalog already holds the notes of the version we just updated to.
+            maybeShowWhatsNew(fromCache = true)
             autoRefresh()
         }
         // A finished install changes the installed version: re-read it, then let the card show the new state.
@@ -248,8 +250,15 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun launchIntent(slug: String): Intent? =
-        catalog.value?.firstOrNull { it.slug == slug }?.let { app.installedApps.launchIntent(it.appId) }
+    /** Looks the launch intent up off the main thread, then hands it to [start] on the main thread. */
+    fun open(slug: String, start: (Intent) -> Unit) {
+        val a = catalog.value?.firstOrNull { it.slug == slug } ?: return
+        viewModelScope.launch {
+            val intent = withContext(Dispatchers.IO) { app.installedApps.launchIntent(a.appId) } ?: return@launch
+            start(intent)
+            recordOpen(slug)
+        }
+    }
 
     fun recordOpen(slug: String) {
         app.scope.launch { app.history.record(DepotEvent("open", appSlug = slug, toVersion = installed.value[slug])) }
@@ -338,7 +347,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     private fun selfReleaseForRunningVersion(): CatalogRelease? =
         catalog.value?.firstOrNull { it.slug == SELF_SLUG }?.latest?.takeIf { it.version == app.versionName }
 
-    private fun maybeShowWhatsNew() {
+    private fun maybeShowWhatsNew(fromCache: Boolean = false) {
         val current = app.versionName
         val seen = settings.lastSeenVersion
         if (seen == null) {
@@ -347,6 +356,8 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         }
         if (seen == current) return
         val notes = selfReleaseForRunningVersion()?.notes?.takeIf { it.isNotBlank() }
+        // The cache may predate this version's release: wait for the refresh instead of marking it seen.
+        if (notes == null && fromCache) return
         settings.lastSeenVersion = current
         if (notes != null) _whatsNew.value = WhatsNew(current, notes)
     }

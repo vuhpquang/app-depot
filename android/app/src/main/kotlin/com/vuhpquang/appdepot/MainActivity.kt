@@ -87,6 +87,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        (application as AppDepotApplication).foreground = true
+    }
+
+    override fun onStop() {
+        (application as AppDepotApplication).foreground = false
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         vm.onResume()

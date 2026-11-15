@@ -7,7 +7,7 @@ import androidx.work.WorkerParameters
 import com.vuhpquang.appdepot.AppDepotApplication
 import com.vuhpquang.appdepot.core.AppState
 import com.vuhpquang.appdepot.core.CatalogApp
-import com.vuhpquang.appdepot.core.InstallProgress
+import com.vuhpquang.appdepot.core.InstallOutcome
 import com.vuhpquang.appdepot.core.SELF_SLUG
 import com.vuhpquang.appdepot.core.planBackground
 import com.vuhpquang.appdepot.core.planFor
@@ -62,40 +62,56 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val plan = planBackground(told, failed, next, settings.autoInstall, silentCapable, busy)
 
         val newFailed = failed.toMutableMap()
-        val finish = mutableListOf<String>()
-        if (plan.install.isNotEmpty()) {
-            installSilently(app, plan.install.map { bySlug.getValue(it) }, newFailed, finish, next)
-        }
+        val needsYou = LinkedHashMap<String, String>() // slug -> version, installs that need the user
+        // Self goes last and alone: its install restarts the process, so everything else is saved first.
+        val selfWanted = SELF_SLUG in plan.install
+        val deferSelf = selfWanted && app.foreground // never restart the app under the user's hands
+        val others = plan.install.filter { it != SELF_SLUG }
+        if (others.isNotEmpty()) installSilently(app, others.map { bySlug.getValue(it) }, newFailed, needsYou, next)
 
         val posted = Notifications.updatesAvailable(app, plan.announce.map { bySlug.getValue(it).name })
-        Notifications.finishUpdating(app, finish.map { bySlug.getValue(it).name })
-        // Only advance "told" when the user could actually be told; otherwise try again next run.
         val saveTold = plan.notified.toMutableMap()
+        // Only advance "told" when the user could actually be told; otherwise try again next run.
         if (!posted) plan.announce.forEach { slug -> told[slug]?.let { saveTold[slug] = it } ?: saveTold.remove(slug) }
-        settings.backgroundNotified = saveTold
+        if (deferSelf) told[SELF_SLUG]?.let { saveTold[SELF_SLUG] = it } ?: saveTold.remove(SELF_SLUG)
+        saveBookkeeping(app, saveTold, newFailed, needsYou, next, bySlug)
+
+        if (selfWanted && !deferSelf) {
+            installSilently(app, listOf(bySlug.getValue(SELF_SLUG)), newFailed, needsYou, next)
+            saveBookkeeping(app, saveTold, newFailed, needsYou, next, bySlug)
+        }
+    }
+
+    /** Posts the "tap to finish" notification and persists told/failed; failures are only recorded once told. */
+    private fun saveBookkeeping(
+        app: AppDepotApplication, told: Map<String, String>, failed: MutableMap<String, String>,
+        needsYou: MutableMap<String, String>, next: Map<String, AppState>, bySlug: Map<String, CatalogApp>,
+    ) {
+        if (needsYou.isNotEmpty()) {
+            val posted = Notifications.finishUpdating(app, needsYou.keys.map { bySlug[it]?.name ?: it })
+            if (posted) failed += needsYou
+            needsYou.clear()
+        }
+        app.settings.backgroundNotified = told
         // Forget failures once the app moved on to another version or is no longer updatable.
-        settings.backgroundFailed = newFailed.filter { (slug, v) -> (next[slug] as? AppState.UpdateAvailable)?.latest?.version == v }
+        app.settings.backgroundFailed = failed.filter { (slug, v) -> (next[slug] as? AppState.UpdateAvailable)?.latest?.version == v }
     }
 
     private suspend fun installSilently(
         app: AppDepotApplication, apps: List<CatalogApp>, failed: MutableMap<String, String>,
-        finish: MutableList<String>, next: Map<String, AppState>,
+        needsYou: MutableMap<String, String>, next: Map<String, AppState>,
     ) {
-        app.coordinator.updateAll(apps)
-        val progress = app.coordinator.progress.value
+        val outcomes = app.coordinator.updateAll(apps, interactive = false)
         for (a in apps) {
             val version = (next[a.slug] as? AppState.UpdateAvailable)?.latest?.version
-            when (val p = progress[a.slug]) {
-                is InstallProgress.Done -> {
-                    Notifications.updated(app, a.slug, a.name, p.version)
+            when (val o = outcomes[a.slug]) {
+                is InstallOutcome.Success -> {
+                    Notifications.updated(app, a.slug, a.name, o.version)
                     app.coordinator.clear(a.slug) // only finished ones; Failed / NeedsUserAction stay visible in the app
                 }
-                InstallProgress.NeedsUserAction, InstallProgress.NeedsPermission -> {
-                    if (version != null) failed[a.slug] = version
-                    finish += a.slug
-                }
-                is InstallProgress.Failed -> if (version != null) failed[a.slug] = version
-                else -> {}
+                InstallOutcome.NeedsUserAction, InstallOutcome.NeedsPermission -> if (version != null) needsYou[a.slug] = version
+                is InstallOutcome.Failed -> if (version != null) failed[a.slug] = version
+                null -> {} // already busy elsewhere (the user is installing it)
             }
         }
     }

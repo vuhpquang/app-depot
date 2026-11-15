@@ -101,9 +101,6 @@ fun HomeScreen(vm: AppDepotViewModel, onOpenApp: (String) -> Unit, onSettings: (
 fun handleAction(vm: AppDepotViewModel, context: android.content.Context, slug: String, action: CardAction) {
     when (action) {
         CardAction.Install, CardAction.Update -> vm.install(slug)
-        CardAction.Open -> vm.launchIntent(slug)?.let {
-            context.startSafely(it)
-            vm.recordOpen(slug)
-        }
+        CardAction.Open -> vm.open(slug) { context.startSafely(it) }
     }
 }
