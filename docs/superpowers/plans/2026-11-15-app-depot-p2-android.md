@@ -47,11 +47,11 @@
 **Interfaces:**
 - Produces: buildable `:app` with `MainActivity` showing a placeholder Home in `AppDepotTheme`; `signingConfigs.release` loaded from `~/.config/app-depot-signing/keystore.properties` when present, else release falls back to debug signing with a Gradle warning.
 
-- [ ] **Step 1:** `SmokeTest` asserting `versionCodeFor("0.1.0") == 100` and `versionCodeFor("1.2.3") == 10203` (helper `fun versionCodeFor(v: String): Int` in `buildSrc`-free form: put it in `android/app/src/main/kotlin/com/vuhpquang/appdepot/core/VersionCode.kt` and use the same formula in Gradle).
-- [ ] **Step 2:** `cd projects/app-depot/android && ./gradlew :app:testDebugUnitTest` → FAIL (no sources).
-- [ ] **Step 3:** Scaffold everything above; run `android/scripts/make-keystore.sh` once (creates the real release key — the only copy lives in `~/.config/app-depot-signing/`, tell the owner to back it up).
-- [ ] **Step 4:** `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease` → BUILD SUCCESSFUL; `apksigner verify --print-certs` on the release APK shows a cert that is not the debug cert.
-- [ ] **Step 5:** Commit in app-depot `chore: scaffold App Depot Android app`, push `main`; hub commit `feat: add app-depot submodule` (+ docs moves + rule rows), `npx gitnexus analyze`.
+- [x] **Step 1:** `SmokeTest` asserting `versionCodeFor("0.1.0") == 100` and `versionCodeFor("1.2.3") == 10203` (helper `fun versionCodeFor(v: String): Int` in `buildSrc`-free form: put it in `android/app/src/main/kotlin/com/vuhpquang/appdepot/core/VersionCode.kt` and use the same formula in Gradle).
+- [x] **Step 2:** `cd projects/app-depot/android && ./gradlew :app:testDebugUnitTest` → FAIL (no sources).
+- [x] **Step 3:** Scaffold everything above; run `android/scripts/make-keystore.sh` once (creates the real release key — the only copy lives in `~/.config/app-depot-signing/`, tell the owner to back it up).
+- [x] **Step 4:** `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease` → BUILD SUCCESSFUL; `apksigner verify --print-certs` on the release APK shows a cert that is not the debug cert.
+- [x] **Step 5:** Commit in app-depot `chore: scaffold App Depot Android app`, push `main`; hub commit `feat: add app-depot submodule` (+ docs moves + rule rows), `npx gitnexus analyze`.
 
 ### Task 2: Catalog, installed state, per-app plan (pure core)
 
@@ -65,9 +65,9 @@
 - `class CatalogRepository(context, baseUrl)`: `suspend fun refresh(): Result<List<CatalogApp>>` (writes cache on success), `fun cached(): List<CatalogApp>`.
 - `class InstalledApps(context)`: `fun versionOf(appId: String): String?`, `fun launchIntent(appId: String): Intent?`.
 
-- [ ] **Step 1: Failing tests** — parse the real live catalog sample (save `curl https://vuhpquang.com/api/depot/catalog?platform=android` as `src/test/resources/catalog-android.json`) → 2 apps, `zentask-android` latest `0.15.2`; malformed JSON → `Result.failure`; unknown extra field ignored; `compareVersions("0.15.10","0.15.2") > 0`; `planFor` cases: not installed → `NotInstalled`; installed `0.15.1` latest `0.15.2` → `UpdateAvailable`; installed `0.15.3` → `LocalBuild`; latest null → `NoRelease`; `installMode=selfUpdates` → `SelfUpdates`.
-- [ ] **Step 2:** run → FAIL. **Step 3:** implement. **Step 4:** `./gradlew :app:testDebugUnitTest` → PASS.
-- [ ] **Step 5:** Commit `feat: catalog parsing and per-app update state`, push.
+- [x] **Step 1: Failing tests** — parse the real live catalog sample (save `curl https://vuhpquang.com/api/depot/catalog?platform=android` as `src/test/resources/catalog-android.json`) → 2 apps, `zentask-android` latest `0.15.2`; malformed JSON → `Result.failure`; unknown extra field ignored; `compareVersions("0.15.10","0.15.2") > 0`; `planFor` cases: not installed → `NotInstalled`; installed `0.15.1` latest `0.15.2` → `UpdateAvailable`; installed `0.15.3` → `LocalBuild`; latest null → `NoRelease`; `installMode=selfUpdates` → `SelfUpdates`.
+- [x] **Step 2:** run → FAIL. **Step 3:** implement. **Step 4:** `./gradlew :app:testDebugUnitTest` → PASS.
+- [x] **Step 5:** Commit `feat: catalog parsing and per-app update state`, push.
 
 ### Task 3: Download, verify, install, Update All queue
 
@@ -80,10 +80,10 @@
 - `class InstallCoordinator`: `suspend fun install(app: CatalogApp)`, `suspend fun updateAll(apps: List<CatalogApp>)`; each outcome is written to History (Task 4 interface `History.record(event)`; in this task, depend on an interface `EventSink { fun record(e: DepotEvent) }` defined here in `core/DepotEvent.kt`: `data class DepotEvent(type: String, appSlug: String?, fromVersion: String?, toVersion: String?, message: String?, at: Instant)`).
 - Messages (exact): wrong size/hash → "The download was damaged. Try again."; signer mismatch → "This file isn't signed like {name}. It wasn't installed."; conflict/incompatible from PackageInstaller → "Android refused the update: it isn't signed like the installed app."; needs "Install unknown apps" → state `NeedsPermission`, open `Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES` for App Depot.
 
-- [ ] **Step 1: Failing tests** — sha256 of `"abc"` = `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad`; size mismatch → `WrongSize`; hash mismatch → `WrongHash`; `signerMatches("AB12…", "ab12…")` true, null catalog → true, different → false; `orderForUpdateAll(["app-depot-android","zentask-android","personal-wiki-android"])` → `[zentask-android, personal-wiki-android, app-depot-android]`; queue: second app `Failed` → third still runs (pure state machine test with a fake installer).
-- [ ] **Step 2–4:** fail → implement → pass.
-- [ ] **Step 5:** Emulator check (debug build): boot `Medium_API37_1` headless (`emulator -avd Medium_API37_1 -no-window -no-audio &`), `adb install` the debug App Depot, trigger install of `zentask-android` from a debug-only intent/extra or the Task 5 UI if already present (else defer this step to Task 5 Step 4) — expect the system confirmation the first time, ZenTask installed, `adb shell pm list packages com.vuhpquang.zentask` shows it.
-- [ ] **Step 6:** Commit `feat: verified download and silent install with update-all queue`, push.
+- [x] **Step 1: Failing tests** — sha256 of `"abc"` = `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad`; size mismatch → `WrongSize`; hash mismatch → `WrongHash`; `signerMatches("AB12…", "ab12…")` true, null catalog → true, different → false; `orderForUpdateAll(["app-depot-android","zentask-android","personal-wiki-android"])` → `[zentask-android, personal-wiki-android, app-depot-android]`; queue: second app `Failed` → third still runs (pure state machine test with a fake installer).
+- [x] **Step 2–4:** fail → implement → pass.
+- [x] **Step 5:** Emulator check (debug build): boot `Medium_API37_1` headless (`emulator -avd Medium_API37_1 -no-window -no-audio &`), `adb install` the debug App Depot, trigger install of `zentask-android` from a debug-only intent/extra or the Task 5 UI if already present (else defer this step to Task 5 Step 4) — expect the system confirmation the first time, ZenTask installed, `adb shell pm list packages com.vuhpquang.zentask` shows it.
+- [x] **Step 6:** Commit `feat: verified download and silent install with update-all queue`, push.
 
 ### Task 4: History, event queue, pairing
 
@@ -95,9 +95,9 @@
 - `History.recent(limit: Int = 200, appSlug: String? = null): List<HistoryRow>`.
 - Events recorded: `depot_started` on app start (once per process), `check` after each catalog refresh (message = "n updates"), `install`/`update`/`install_failed`/`self_update` from InstallCoordinator.
 
-- [ ] **Step 1: Failing tests** — 450 events → batches of 200/200/50; body has `"events":[…]`; 1005 rows → drop 5; parse 201 `{"data":{"deviceId":"…","token":"t"}}` → `Paired("t")`; 403 → `BadCode`; 500 → `Failed`.
-- [ ] **Step 2–4:** fail → implement → pass.
-- [ ] **Step 5:** Commit `feat: history log, event outbox and device pairing`, push.
+- [x] **Step 1: Failing tests** — 450 events → batches of 200/200/50; body has `"events":[…]`; 1005 rows → drop 5; parse 201 `{"data":{"deviceId":"…","token":"t"}}` → `Paired("t")`; 403 → `BadCode`; 500 → `Failed`.
+- [x] **Step 2–4:** fail → implement → pass.
+- [x] **Step 5:** Commit `feat: history log, event outbox and device pairing`, push.
 
 ### Task 5: UI — Home, App detail, History, Settings, About
 
@@ -110,9 +110,9 @@
 - Settings: Updates (Check automatically [on], Install automatically [off, disabled when check off], "Last checked …", Check now), Connection (Connect to vuhpquang.com → enter 8-char code → Connect; when paired: device name + Disconnect), About block (Global Constraints text).
 - What's New for App Depot itself: shown once after its own version changes (record last seen version; first run records silently).
 
-- [ ] **Step 1: Failing tests** for ReleaseNotes + HomeState mapping. **Step 2–3:** fail → implement.
-- [ ] **Step 4: Visual check** — emulator: `adb shell cmd uimode night no|yes`, launch, `adb exec-out screencap -p > shots/home-{light,dark}.png`, also detail + settings; Read the PNGs, fix contrast/spacing issues; then run the deferred install check from Task 3 Step 5 through the UI (Install ZenTask → confirm → Installed; then `adb install` an older ZenTask is not available — instead verify Update state by installing App Depot with `APPDEPOT_PRETEND_VERSIONS` debug override `zentask-android=0.0.1` that makes the planner treat it as outdated, and run Update all → second install is silent).
-- [ ] **Step 5:** `./gradlew :app:testDebugUnitTest :app:assembleDebug` pass; commit `feat: home, detail, history and settings screens`, push. Screenshots saved under the scratchpad, not the repo.
+- [x] **Step 1: Failing tests** for ReleaseNotes + HomeState mapping. **Step 2–3:** fail → implement.
+- [x] **Step 4: Visual check** — emulator: `adb shell cmd uimode night no|yes`, launch, `adb exec-out screencap -p > shots/home-{light,dark}.png`, also detail + settings; Read the PNGs, fix contrast/spacing issues; then run the deferred install check from Task 3 Step 5 through the UI (Install ZenTask → confirm → Installed; then `adb install` an older ZenTask is not available — instead verify Update state by installing App Depot with `APPDEPOT_PRETEND_VERSIONS` debug override `zentask-android=0.0.1` that makes the planner treat it as outdated, and run Update all → second install is silent).
+- [x] **Step 5:** `./gradlew :app:testDebugUnitTest :app:assembleDebug` pass; commit `feat: home, detail, history and settings screens`, push. Screenshots saved under the scratchpad, not the repo.
 
 ### Task 6: Background check, notifications, auto-install
 
@@ -120,25 +120,25 @@
 
 **Interfaces:** `fun decide(prev: Map<String, AppState>, next: Map<String, AppState>, autoInstall: Boolean): BackgroundDecision(notifySlugs: List<String>, installSlugs: List<String>)` — only newly available updates notify; failed/available states the user hasn't acted on are kept; autoInstall installs all updatable (self last); errors never notify.
 
-- [ ] **Step 1–4:** failing tests (new update → notify; same update already notified → no notify; autoInstall on → install list in order, self last; check error → no notify) → implement → pass.
-- [ ] **Step 5:** Emulator: `adb shell cmd jobscheduler run -f com.vuhpquang.appdepot.dev <jobId>` or WorkManager test helper in a debug build to force a run; observe the notification (`adb shell dumpsys notification | grep appdepot`).
-- [ ] **Step 6:** Commit `feat: background update checks and notifications`, push.
+- [x] **Step 1–4:** failing tests (new update → notify; same update already notified → no notify; autoInstall on → install list in order, self last; check error → no notify) → implement → pass.
+- [x] **Step 5:** Emulator: `adb shell cmd jobscheduler run -f com.vuhpquang.appdepot.dev <jobId>` or WorkManager test helper in a debug build to force a run; observe the notification (`adb shell dumpsys notification | grep appdepot`).
+- [x] **Step 6:** Commit `feat: background update checks and notifications`, push.
 
 ### Task 7: Release + catalog entry + first release
 
 **Files:** Create `android/scripts/release.sh` (usage `[PUBLISH=0] scripts/release.sh X.Y.Z notes.md`: require clean tree on `main`; write VERSION; `./gradlew :app:testDebugUnitTest :app:assembleRelease`; verify signer equals the App Depot release cert (apksigner, Corretto 17 JAVA_HOME); copy to `build/AppDepot-X.Y.Z-android.apk`; commit `release: android-vX.Y.Z`; tag; unless `PUBLISH=0`: push main + tag, `gh release create android-vX.Y.Z <apk> --title "App Depot (Android) X.Y.Z" --notes-file notes.md --latest=false`; then print the hub command to publish to the catalog). Modify hub `docs/app-depot-apps.json` (+ `app-depot-android`: android, `com.vuhpquang.appdepot`, repo `vuhpquang/app-depot`, tagPattern `^android-v`, assetPattern `^AppDepot-[0-9.]+-android\.apk$`, installMode managed, order 0, signer = release cert SHA-256), hub `.claude/skills/release-project/SKILL.md` (App Depot Android row: release script path + depot-publish slug).
 
-- [ ] **Step 1:** Write `docs/release-notes/android-0.1.0.md` (user-facing, `## What's new` bullets: install and update Personal Wiki and ZenTask in one place; Update all; history; background checks).
-- [ ] **Step 2:** `cd projects/app-depot/android && scripts/release.sh 0.1.0 ../docs/release-notes/android-0.1.0.md` → GitHub release `android-v0.1.0` with the APK.
-- [ ] **Step 3:** Hub: `scripts/depot-publish.sh app-depot-android --meta` then `scripts/depot-publish.sh app-depot-android` → `published (created)`; `curl …/api/depot/catalog?platform=android | jq '.data.apps[].slug'` includes `app-depot-android`.
-- [ ] **Step 4:** Emulator: install the release APK, confirm Home lists 3 apps and App Depot shows "Up to date" for itself.
-- [ ] **Step 5:** Hub commits: registry + skill (`feat: App Depot Android in the catalog`), pointer bump `chore: bump app-depot submodule (App Depot Android 0.1.0)`, gitnexus analyze.
+- [x] **Step 1:** Write `docs/release-notes/android-0.1.0.md` (user-facing, `## What's new` bullets: install and update Personal Wiki and ZenTask in one place; Update all; history; background checks).
+- [x] **Step 2:** `cd projects/app-depot/android && scripts/release.sh 0.1.0 ../docs/release-notes/android-0.1.0.md` → GitHub release `android-v0.1.0` with the APK.
+- [x] **Step 3:** Hub: `scripts/depot-publish.sh app-depot-android --meta` then `scripts/depot-publish.sh app-depot-android` → `published (created)`; `curl …/api/depot/catalog?platform=android | jq '.data.apps[].slug'` includes `app-depot-android`.
+- [x] **Step 4:** Emulator: install the release APK, confirm Home lists 3 apps and App Depot shows "Up to date" for itself.
+- [x] **Step 5:** Hub commits: registry + skill (`feat: App Depot Android in the catalog`), pointer bump `chore: bump app-depot submodule (App Depot Android 0.1.0)`, gitnexus analyze.
 
 ### Task 8: ZenTask steps aside + Personal Wiki CI publishes
 
 **Files:** ZenTask: modify `projects/zentask/apps/android/src/main/kotlin/com/vuhpquang/zentask/android/AppUpdater.kt` (+ its Updates UI) — when package `com.vuhpquang.appdepot` is installed (`<queries><package android:name="com.vuhpquang.appdepot"/></queries>` in its manifest), `check()`/`install()` don't run; the Updates screen shows "Updates are managed by App Depot" + "Open App Depot" button (launch intent). Personal Wiki (`/Users/quangvu/Work/Repos/personal/personal-wiki`, not a submodule): modify `.github/workflows/android-release.yml` — after the GitHub release step, a step that runs only on `android-v*` tags: compute sha256/size of the APK, POST `https://vuhpquang.com/api/admin/depot/releases` with `Authorization: Bearer ${{ secrets.APPDEPOT_ADMIN_TOKEN }}` and body `{app:"personal-wiki-android", version, notes (release body), assetName, downloadUrl (browser URL), assetApiUrl (asset API url), sha256, size, publishedAt}`; fail the job on non-2xx. Set the secret with `gh secret set APPDEPOT_ADMIN_TOKEN -R vuhpquang/personal-wiki < ~/.config/app-depot/admin-token`.
 
-- [ ] **Step 1:** ZenTask: unit test (pure helper `fun updatesManagedByDepot(installed: Set<String>): Boolean`) fails → implement → pass (`./gradlew :shared:allTests` unaffected; `:android:testDebugUnitTest` if present, else a JVM test in `apps/android/src/test`).
-- [ ] **Step 2:** ZenTask build + release per its CLAUDE.md (`INSTALL=1 scripts/release.sh X.Y.Z notes.md` at home — bumps patch; release notes "## Fixes - When App Depot is installed, ZenTask leaves updates to it"), then hub `scripts/depot-publish.sh zentask-android` and `zentask-macos`, pointer bump.
-- [ ] **Step 3:** Personal Wiki: edit workflow, `actionlint` if available (else `yq` parse) → commit `ci: publish Android releases to the App Depot catalog` → push its default branch (owner's repo; the change only adds a post-release step). Set the secret.
-- [ ] **Step 4:** Docs: app-depot `CLAUDE.md` (layout, commands, release, signing, emulator testing), hub rule `app-depot.md` (Wiki publishes from CI; ZenTask defers to App Depot), project memory.
+- [x] **Step 1:** ZenTask: unit test (pure helper `fun updatesManagedByDepot(installed: Set<String>): Boolean`) fails → implement → pass (`./gradlew :shared:allTests` unaffected; `:android:testDebugUnitTest` if present, else a JVM test in `apps/android/src/test`).
+- [x] **Step 2:** ZenTask build + release per its CLAUDE.md (`INSTALL=1 scripts/release.sh X.Y.Z notes.md` at home — bumps patch; release notes "## Fixes - When App Depot is installed, ZenTask leaves updates to it"), then hub `scripts/depot-publish.sh zentask-android` and `zentask-macos`, pointer bump.
+- [x] **Step 3:** Personal Wiki: edit workflow, `actionlint` if available (else `yq` parse) → commit `ci: publish Android releases to the App Depot catalog` → push its default branch (owner's repo; the change only adds a post-release step). Set the secret.
+- [x] **Step 4:** Docs: app-depot `CLAUDE.md` (layout, commands, release, signing, emulator testing), hub rule `app-depot.md` (Wiki publishes from CI; ZenTask defers to App Depot), project memory.
