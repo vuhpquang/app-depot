@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
@@ -41,23 +42,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.vuhpquang.appdepot.R
-import com.vuhpquang.appdepot.ui.AppRow
+import com.vuhpquang.appdepot.core.ANDROID
+import com.vuhpquang.appdepot.ui.ProductRow
+import com.vuhpquang.appdepot.ui.productMenuActions
+import androidx.compose.material.icons.outlined.Public
 import com.vuhpquang.appdepot.ui.CardAction
 import com.vuhpquang.appdepot.ui.CardActivity
 import com.vuhpquang.appdepot.ui.CardModel
 import com.vuhpquang.appdepot.ui.MenuAction
-import com.vuhpquang.appdepot.ui.menuActions
 import com.vuhpquang.appdepot.ui.theme.DepotTokens
 
 @Composable
 fun AppCard(
-    row: AppRow,
+    item: ProductRow,
+    showPlatforms: Boolean,
     onClick: () -> Unit,
     onAction: (CardAction) -> Unit,
     onAllowInstalls: () -> Unit,
     onMenu: (MenuAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val app = item.app
     Card(
         modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(DepotTokens.RadiusLg),
@@ -65,22 +70,30 @@ fun AppCard(
     ) {
         Column(Modifier.padding(DepotTokens.SpaceMd), verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceMd)) {
-                AppIcon(row.app.name, row.app.iconUrl)
+                AppIcon(app.name, app.iconUrl)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceXs / 2)) {
-                    Text(row.app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        row.app.tagline,
+                        app.tagline,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                ActionButton(row.model.action, onAction)
-                AppMenu(row, onMenu)
+                if (item.isLocal) {
+                    ActionButton(item.model.action, onAction)
+                } else {
+                    // An icon, not a labelled button: the row is narrow and the name must stay readable.
+                    IconButton({ onMenu(MenuAction.OpenOnWeb) }) {
+                        Icon(Icons.Outlined.Public, stringResource(R.string.action_open_web), tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                AppMenu(productMenuActions(item), onMenu)
             }
-            StatusLine(row.model)
-            CardFooter(row.model, onAllowInstalls)
+            StatusLine(item.model)
+            if (showPlatforms) PlatformBadges(item.product.platforms(ANDROID), ANDROID)
+            CardFooter(item.model, onAllowInstalls)
         }
     }
 }
@@ -88,7 +101,8 @@ fun AppCard(
 /** Gallery tile: big icon, name, status chip and one action button. */
 @Composable
 fun AppGridCard(
-    row: AppRow,
+    item: ProductRow,
+    showPlatforms: Boolean,
     onClick: () -> Unit,
     onAction: (CardAction) -> Unit,
     onAllowInstalls: () -> Unit,
@@ -106,12 +120,13 @@ fun AppGridCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm),
             ) {
-                AppIcon(row.app.name, row.app.iconUrl, size = DepotTokens.IconGrid)
+                AppIcon(item.app.name, item.app.iconUrl, size = DepotTokens.IconGrid)
                 Text(
-                    row.app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1,
+                    item.app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                 )
-                val m = row.model
+                val m = item.model
+                if (showPlatforms) PlatformBadges(item.product.platforms(ANDROID), ANDROID)
                 when {
                     m.chip != null -> StatusChip(m.chip)
                     m.latest != null -> Text(
@@ -123,30 +138,34 @@ fun AppGridCard(
                 }
                 if (m.activity != null || m.needsPermission || m.error != null) {
                     CardFooter(m, onAllowInstalls, Modifier.fillMaxWidth())
+                } else if (!item.isLocal) {
+                    WebButton(Modifier.fillMaxWidth()) { onMenu(MenuAction.OpenOnWeb) }
                 } else if (m.action != null) {
                     ActionButton(m.action, onAction, Modifier.fillMaxWidth())
                 } else {
                     Spacer(Modifier.height(DepotTokens.TouchMin))
                 }
             }
-            AppMenu(row, onMenu, Modifier.align(Alignment.TopEnd))
+            AppMenu(productMenuActions(item), onMenu, Modifier.align(Alignment.TopEnd))
         }
     }
 }
 
 /** The card's "⋮" menu: Open / Uninstall / Share link / Release page, as they apply. */
 @Composable
-fun AppMenu(row: AppRow, onMenu: (MenuAction) -> Unit, modifier: Modifier = Modifier) {
+fun AppMenu(actions: List<MenuAction>, onMenu: (MenuAction) -> Unit, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         IconButton({ open = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.action_more)) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            menuActions(row).forEach { a ->
+            actions.forEach { a ->
                 val (label, icon) = when (a) {
                     MenuAction.Open -> R.string.action_open to Icons.Outlined.PlayCircle
                     MenuAction.Uninstall -> R.string.action_uninstall to Icons.Outlined.Delete
                     MenuAction.Share -> R.string.action_share to Icons.Outlined.Share
                     MenuAction.ReleasePage -> R.string.action_release_page to Icons.AutoMirrored.Outlined.OpenInNew
+                    MenuAction.OpenOnWeb -> R.string.action_open_web to Icons.Outlined.Public
+                    MenuAction.ShareWebLink -> R.string.action_share_web to Icons.Outlined.Share
                 }
                 DropdownMenuItem(
                     text = { Text(stringResource(label)) },
@@ -168,6 +187,15 @@ fun ActionButton(action: CardAction?, onAction: (CardAction) -> Unit, modifier: 
         CardAction.Install -> FilledTonalButton({ onAction(action) }, m) { Text(label(R.string.action_install), maxLines = 1) }
         CardAction.Open -> OutlinedButton({ onAction(action) }, m) { Text(stringResource(R.string.action_open), maxLines = 1) }
         null -> Unit
+    }
+}
+
+/** For an app with no build for this phone: its page on vuhpquang.com. */
+@Composable
+fun WebButton(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    OutlinedButton(onClick, modifier.heightIn(min = DepotTokens.TouchMin)) {
+        Icon(Icons.Outlined.Public, contentDescription = null, modifier = Modifier.size(DepotTokens.IconSmall))
+        Text(stringResource(R.string.action_web_page), modifier = Modifier.padding(start = DepotTokens.SpaceSm), maxLines = 1)
     }
 }
 

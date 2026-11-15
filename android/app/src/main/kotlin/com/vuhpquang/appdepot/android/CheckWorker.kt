@@ -9,6 +9,7 @@ import com.vuhpquang.appdepot.core.AppState
 import com.vuhpquang.appdepot.core.CatalogApp
 import com.vuhpquang.appdepot.core.InstallOutcome
 import com.vuhpquang.appdepot.core.SELF_SLUG
+import com.vuhpquang.appdepot.core.localApps
 import com.vuhpquang.appdepot.core.planBackground
 import com.vuhpquang.appdepot.core.planFor
 import kotlinx.coroutines.CancellationException
@@ -39,7 +40,8 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
 
     private suspend fun run(app: AppDepotApplication) {
         val settings = app.settings
-        val apps = app.catalog.refresh().getOrNull() ?: return
+        // The cache holds every platform; only this phone's entries are planned (app ids collide across platforms).
+        val apps = localApps(app.catalog.refresh().getOrNull() ?: return)
         settings.lastChecked = System.currentTimeMillis()
 
         val pretend = app.readPretend()

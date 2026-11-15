@@ -42,6 +42,9 @@ object DepotTokens {
     val IconSmall = 18.dp
     val ProgressHeight = 4.dp
 
+    /** Outline of platform badges. */
+    val Hairline = 1.dp
+
     /** Content alpha for disabled rows (Material's disabled level). */
     const val DisabledAlpha = 0.38f
 }

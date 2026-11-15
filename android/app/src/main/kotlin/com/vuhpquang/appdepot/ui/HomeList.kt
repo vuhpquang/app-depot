@@ -24,18 +24,20 @@ enum class SortOrder(val key: String) {
     }
 }
 
-private val byName: Comparator<AppRow> = compareBy({ foldForSearch(it.app.name) }, { it.app.slug })
-
-fun sortRows(rows: List<AppRow>, order: SortOrder): List<AppRow> = when (order) {
-    SortOrder.UpdatesFirst -> rows.sortedWith(compareBy<AppRow> { if (it.state is AppState.UpdateAvailable) 0 else 1 }.then(byName))
-    SortOrder.Name -> rows.sortedWith(byName)
-    // ISO-8601 timestamps sort as text; apps without a release go last.
-    SortOrder.RecentlyReleased -> rows.sortedWith(
-        compareBy<AppRow> { if (it.app.latest == null) 1 else 0 }
-            .thenByDescending { it.app.latest?.publishedAt ?: "" }
-            .then(byName),
-    )
+/** One comparator for app rows and product rows: [app] gives name/release, [state] the planned state (null = not here). */
+internal fun <T> rowComparator(order: SortOrder, app: (T) -> CatalogApp, state: (T) -> AppState?): Comparator<T> {
+    val byName: Comparator<T> = compareBy({ foldForSearch(app(it).name) }, { app(it).slug })
+    return when (order) {
+        SortOrder.UpdatesFirst -> compareBy<T> { if (state(it) is AppState.UpdateAvailable) 0 else 1 }.then(byName)
+        SortOrder.Name -> byName
+        // ISO-8601 timestamps sort as text; apps without a release go last.
+        SortOrder.RecentlyReleased -> compareBy<T> { if (app(it).latest == null) 1 else 0 }
+            .thenByDescending { app(it).latest?.publishedAt ?: "" }
+            .then(byName)
+    }
 }
+
+fun sortRows(rows: List<AppRow>, order: SortOrder): List<AppRow> = rows.sortedWith(rowComparator(order, { it.app }, { it.state }))
 
 /** Bytes to download for the primary Install / Update action; null when there is nothing to download. */
 fun downloadBytes(row: AppRow): Long? = when (val s = row.state) {
@@ -75,7 +77,7 @@ fun iconFileName(url: String): String =
     MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString("") { "%02x".format(it) } + ".png"
 
 /** Items of a card's overflow menu ("⋮"). */
-enum class MenuAction { Open, Uninstall, Share, ReleasePage }
+enum class MenuAction { Open, Uninstall, Share, ReleasePage, OpenOnWeb, ShareWebLink }
 
 fun menuActions(row: AppRow): List<MenuAction> = buildList {
     if (row.launchable && row.app.slug != SELF_SLUG) add(MenuAction.Open)

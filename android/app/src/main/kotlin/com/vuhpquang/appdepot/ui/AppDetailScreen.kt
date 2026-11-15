@@ -10,6 +10,14 @@ import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.vuhpquang.appdepot.core.AppState
+import com.vuhpquang.appdepot.core.ANDROID
+import com.vuhpquang.appdepot.core.CatalogRelease
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
+import com.vuhpquang.appdepot.ui.components.PlatformBadges
+import com.vuhpquang.appdepot.ui.components.StatusChip
+import com.vuhpquang.appdepot.ui.components.platformName
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,10 +59,10 @@ fun AppDetailScreen(vm: AppDepotViewModel, slug: String, onBack: () -> Unit) {
     val allHistory by vm.history.collectAsStateWithLifecycle()
     val context = LocalContext.current
     LaunchedEffect(Unit) { vm.loadHistory() }
-    val row = ui.rows.firstOrNull { it.app.slug == slug }
+    val item = ui.product(slug)
     val uninstall = rememberUninstaller(vm)
-    Scaffold(topBar = { BackTopBar(row?.app?.name ?: "", onBack) }) { padding ->
-        if (row == null) {
+    Scaffold(topBar = { BackTopBar(item?.app?.name ?: "", onBack) }) { padding ->
+        if (item == null) {
             Text(
                 stringResource(R.string.app_not_found),
                 modifier = Modifier.padding(padding).padding(DepotTokens.SpaceMd),
@@ -62,61 +70,47 @@ fun AppDetailScreen(vm: AppDepotViewModel, slug: String, onBack: () -> Unit) {
             )
             return@Scaffold
         }
+        val app = item.app
+        val others = item.product.others(ANDROID)
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(DepotTokens.SpaceMd),
             verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceMd),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceMd)) {
-                AppIcon(row.app.name, row.app.iconUrl, size = DepotTokens.IconHeader)
+                AppIcon(app.name, app.iconUrl, size = DepotTokens.IconHeader)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceXs)) {
-                    Text(row.app.name, style = MaterialTheme.typography.headlineSmall)
-                    Text(row.app.tagline, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(app.name, style = MaterialTheme.typography.headlineSmall)
+                    Text(app.tagline, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    PlatformBadges(item.product.platforms(ANDROID), ANDROID, Modifier.padding(top = DepotTokens.SpaceXs))
                 }
             }
-            StatusLine(row.model)
-            Row(horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm)) {
-                ActionButton(row.model.action, { handleAction(vm, context, slug, it) }, size = formatSize(context, downloadBytes(row)))
-                // Updating or installing: also offer Open when the app is already there.
-                if (row.model.action != CardAction.Open && row.model.action != null && row.launchable) {
-                    ActionButton(CardAction.Open, { handleAction(vm, context, slug, it) })
+            val row = item.row
+            if (row != null) {
+                others.forEach { other ->
+                    val name = platformName(other.platform)
+                    Text(
+                        other.latest?.let { stringResource(R.string.also_on, name, it.version) }
+                            ?: stringResource(R.string.also_on_no_release, name),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-            }
-            CardFooter(row.model, onAllowInstalls = { context.startSafely(vm.unknownSourcesIntent()) })
-            (row.state as? AppState.Skipped)?.let {
-                Text(
-                    stringResource(R.string.skipped_note, it.latest.version),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            DetailActions(vm, row, onUninstall = uninstall)
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Text(stringResource(R.string.whats_new), style = MaterialTheme.typography.titleMedium)
-            val latest = row.app.latest
-            if (latest != null) {
-                Text(
-                    stringResource(R.string.whats_new_version, latest.version, formatDate(latest.publishedAt)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (latest.notes.isNotBlank()) ReleaseNotes(latest.notes) else NoNotes()
+                LocalDetail(vm, row, uninstall)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Text(stringResource(R.string.history_title), style = MaterialTheme.typography.titleMedium)
+                val rows = allHistory.filter { it.appSlug == row.app.slug && it.type != "check" }.take(20)
+                if (rows.isEmpty()) {
+                    Text(stringResource(R.string.history_empty_app), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Column { rows.forEach { HistoryItem(it, vm) } }
+                }
             } else {
-                NoNotes()
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Text(stringResource(R.string.history_title), style = MaterialTheme.typography.titleMedium)
-            val rows = allHistory.filter { it.appSlug == slug && it.type != "check" }.take(20)
-            if (rows.isEmpty()) {
-                Text(stringResource(R.string.history_empty_app), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Column { rows.forEach { HistoryItem(it, vm) } }
+                RemoteDetail(item)
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             TextButton(
-                onClick = { context.openUrl("https://github.com/${row.app.repo}") },
+                onClick = { context.openUrl("https://github.com/${app.repo}") },
                 modifier = Modifier.heightIn(min = DepotTokens.TouchMin),
             ) {
                 Text(stringResource(R.string.source_code))
@@ -126,6 +120,76 @@ fun AppDetailScreen(vm: AppDepotViewModel, slug: String, onBack: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+/** This phone's variant: state, install/update/open, skip/uninstall/share, its release notes. */
+@Composable
+private fun LocalDetail(vm: AppDepotViewModel, row: AppRow, uninstall: (String) -> Unit) {
+    val context = LocalContext.current
+    val slug = row.app.slug
+    StatusLine(row.model)
+    Row(horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm)) {
+        ActionButton(row.model.action, { handleAction(vm, context, slug, it) }, size = formatSize(context, downloadBytes(row)))
+        // Updating or installing: also offer Open when the app is already there.
+        if (row.model.action != CardAction.Open && row.model.action != null && row.launchable) {
+            ActionButton(CardAction.Open, { handleAction(vm, context, slug, it) })
+        }
+    }
+    CardFooter(row.model, onAllowInstalls = { context.startSafely(vm.unknownSourcesIntent()) })
+    (row.state as? AppState.Skipped)?.let {
+        Text(
+            stringResource(R.string.skipped_note, it.latest.version),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    DetailActions(vm, row, onUninstall = uninstall)
+
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Text(stringResource(R.string.whats_new), style = MaterialTheme.typography.titleMedium)
+    ReleaseSection(row.app.latest)
+}
+
+/** No build for this phone: say so, offer the web page and a link to share, then each platform's latest release. */
+@Composable
+private fun RemoteDetail(item: ProductRow) {
+    val context = LocalContext.current
+    StatusChip(CardChip.NotOnThisDevice)
+    Text(
+        stringResource(R.string.not_on_device_note, item.app.name),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm)) {
+        FilledTonalButton({ context.openUrl(productWebUrl(item.product)) }, Modifier.heightIn(min = DepotTokens.TouchMin)) {
+            Icon(Icons.Outlined.Public, contentDescription = null, modifier = Modifier.size(DepotTokens.IconSmall))
+            Text(stringResource(R.string.action_open_web), modifier = Modifier.padding(start = DepotTokens.SpaceSm))
+        }
+        OutlinedButton({ shareWebLink(context, item.product) }, Modifier.heightIn(min = DepotTokens.TouchMin)) {
+            Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(DepotTokens.IconSmall))
+            Text(stringResource(R.string.action_share_web), modifier = Modifier.padding(start = DepotTokens.SpaceSm))
+        }
+    }
+    item.product.others(ANDROID).forEach { other ->
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Text(stringResource(R.string.available_for, platformName(other.platform)), style = MaterialTheme.typography.titleMedium)
+        ReleaseSection(other.latest)
+    }
+}
+
+/** "Version X · date" and the notes, or "No notes". */
+@Composable
+private fun ReleaseSection(latest: CatalogRelease?) {
+    if (latest != null) {
+        Text(
+            stringResource(R.string.whats_new_version, latest.version, formatDate(latest.publishedAt)),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (latest.notes.isNotBlank()) ReleaseNotes(latest.notes) else NoNotes()
+    } else {
+        NoNotes()
     }
 }
 

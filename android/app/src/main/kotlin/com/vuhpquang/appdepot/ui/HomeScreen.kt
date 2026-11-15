@@ -60,6 +60,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vuhpquang.appdepot.R
 import com.vuhpquang.appdepot.core.CatalogApp
+import com.vuhpquang.appdepot.core.Product
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import com.vuhpquang.appdepot.ui.components.AppCard
 import com.vuhpquang.appdepot.ui.components.AppGridCard
 import com.vuhpquang.appdepot.ui.components.UpdateAllBar
@@ -106,10 +117,15 @@ fun HomeScreen(vm: AppDepotViewModel, onOpenApp: (String) -> Unit, onSettings: (
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
             val grid = ui.layout == HomeLayout.Grid
+            val sections = ui.sections
+            val showPlatforms = ui.filter == PlatformFilter.All
+            val deviceEmpty = ui.loaded && !ui.refreshing && ui.products.isNotEmpty() && ui.counts.device == 0 &&
+                ui.filter == PlatformFilter.Device && ui.query.isBlank()
             val message = when {
                 !ui.loaded || ui.refreshing -> null
-                ui.rows.isEmpty() -> stringResource(if (ui.refreshFailed) R.string.empty_load_failed else R.string.empty_no_apps)
-                ui.visible.isEmpty() -> stringResource(R.string.search_no_results, ui.query.trim())
+                ui.products.isEmpty() -> stringResource(if (ui.refreshFailed) R.string.empty_load_failed else R.string.empty_no_apps)
+                deviceEmpty -> stringResource(R.string.empty_device)
+                sections.isEmpty -> stringResource(R.string.search_no_results, ui.query.trim())
                 else -> null
             }
             LazyVerticalGrid(
@@ -120,7 +136,10 @@ fun HomeScreen(vm: AppDepotViewModel, onOpenApp: (String) -> Unit, onSettings: (
                 horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceMd),
             ) {
                 val full: (LazyGridItemSpanScope) -> GridItemSpan = { GridItemSpan(it.maxLineSpan) }
-                if (ui.refreshFailed && ui.rows.isNotEmpty()) {
+                if (ui.products.isNotEmpty()) {
+                    item(key = "filter", span = full) { PlatformFilterRow(ui.filter, ui.counts, vm::setFilter) }
+                }
+                if (ui.refreshFailed && ui.products.isNotEmpty()) {
                     item(key = "refresh-failed", span = full) {
                         Text(
                             stringResource(R.string.refresh_failed),
@@ -135,19 +154,36 @@ fun HomeScreen(vm: AppDepotViewModel, onOpenApp: (String) -> Unit, onSettings: (
                         UpdateAllBar(updatable, ui.busy, vm::updateAll, size = formatSize(context, updateAllBytes(ui.rows)))
                     }
                 }
-                items(ui.visible, key = { it.app.slug }) { row ->
-                    val onAction = { action: CardAction -> handleAction(vm, context, row.app.slug, action) }
-                    val onMenu = { a: MenuAction -> handleMenu(vm, context, row.app, a, uninstall) }
+                val card: @Composable (ProductRow) -> Unit = { item ->
+                    val slug = item.app.slug
+                    val onAction = { action: CardAction -> handleAction(vm, context, slug, action) }
+                    val onMenu = { a: MenuAction -> handleMenu(vm, context, item, a, uninstall) }
                     val onAllow = { context.startSafely(vm.unknownSourcesIntent()) }
                     if (grid) {
-                        AppGridCard(row, { onOpenApp(row.app.slug) }, onAction, onAllow, onMenu)
+                        AppGridCard(item, showPlatforms, { onOpenApp(slug) }, onAction, onAllow, onMenu)
                     } else {
-                        AppCard(row, { onOpenApp(row.app.slug) }, onAction, onAllow, onMenu)
+                        AppCard(item, showPlatforms, { onOpenApp(slug) }, onAction, onAllow, onMenu)
                     }
+                }
+                items(sections.local, key = { it.product.key }) { card(it) }
+                if (sections.other.isNotEmpty()) {
+                    item(key = "other-header", span = full) {
+                        Text(
+                            stringResource(R.string.section_other_platforms),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = if (sections.local.isEmpty()) 0.dp else DepotTokens.SpaceSm),
+                        )
+                    }
+                    items(sections.other, key = { it.product.key }) { card(it) }
                 }
                 if (message != null) {
                     item(key = "empty", span = full) {
-                        Box(Modifier.fillMaxWidth().padding(top = DepotTokens.SpaceXl)) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(top = DepotTokens.SpaceXl),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceMd),
+                        ) {
                             Text(
                                 message,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -155,9 +191,39 @@ fun HomeScreen(vm: AppDepotViewModel, onOpenApp: (String) -> Unit, onSettings: (
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                            if (deviceEmpty) {
+                                FilledTonalButton({ vm.setFilter(PlatformFilter.All) }, Modifier.heightIn(min = DepotTokens.TouchMin)) {
+                                    Text(stringResource(R.string.action_show_all))
+                                }
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** "This phone · 3" | "All · 9": which products Home lists. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlatformFilterRow(filter: PlatformFilter, counts: FilterCounts, onFilter: (PlatformFilter) -> Unit) {
+    val label = stringResource(R.string.filter_label)
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().semantics { contentDescription = label }) {
+        PlatformFilter.entries.forEachIndexed { i, f ->
+            SegmentedButton(
+                selected = filter == f,
+                onClick = { onFilter(f) },
+                shape = SegmentedButtonDefaults.itemShape(i, PlatformFilter.entries.size),
+                modifier = Modifier.heightIn(min = DepotTokens.TouchMin),
+            ) {
+                Text(
+                    when (f) {
+                        PlatformFilter.Device -> stringResource(R.string.filter_device, counts.device)
+                        PlatformFilter.All -> stringResource(R.string.filter_all, counts.all)
+                    },
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -244,13 +310,26 @@ fun handleAction(vm: AppDepotViewModel, context: Context, slug: String, action: 
     }
 }
 
-fun handleMenu(vm: AppDepotViewModel, context: Context, app: CatalogApp, action: MenuAction, uninstall: (String) -> Unit) {
+fun handleMenu(vm: AppDepotViewModel, context: Context, item: ProductRow, action: MenuAction, uninstall: (String) -> Unit) {
+    val app = item.app
     when (action) {
         MenuAction.Open -> vm.open(app.slug) { context.startSafely(it) }
         MenuAction.Uninstall -> uninstall(app.slug)
         MenuAction.Share -> shareApp(context, app)
         MenuAction.ReleasePage -> context.openUrl(releasePageUrl(app))
+        MenuAction.OpenOnWeb -> context.openUrl(productWebUrl(item.product))
+        MenuAction.ShareWebLink -> shareWebLink(context, item.product)
     }
+}
+
+/** Share the product's vuhpquang.com page: for apps that have no build for this phone. */
+fun shareWebLink(context: Context, product: Product) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.share_subject, product.display.name))
+        putExtra(Intent.EXTRA_TEXT, webShareText(product))
+    }
+    context.startSafely(Intent.createChooser(send, null))
 }
 
 fun shareApp(context: Context, app: CatalogApp) {

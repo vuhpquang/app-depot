@@ -9,7 +9,10 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** [baseUrl] is read on every refresh so the debug Server setting applies without a restart. */
+/**
+ * The full catalog, every platform (filtering is done in the app, see `core/Products.kt`), cached in `catalog.json`.
+ * [baseUrl] is read on every refresh so the debug Server setting applies without a restart.
+ */
 class CatalogRepository(context: Context, private val baseUrl: () -> String) {
     private val versionName: String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "0"
@@ -17,7 +20,7 @@ class CatalogRepository(context: Context, private val baseUrl: () -> String) {
 
     suspend fun refresh(): Result<List<CatalogApp>> = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = URL("${baseUrl().trimEnd('/')}/api/depot/catalog?platform=android")
+            val conn = URL("${baseUrl().trimEnd('/')}/api/depot/catalog")
                 .openConnection() as HttpURLConnection
             val body = try {
                 conn.connectTimeout = 20_000

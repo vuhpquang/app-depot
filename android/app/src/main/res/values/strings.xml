@@ -141,4 +141,25 @@
     <string name="server_invalid">Enter an http:// or https:// address.</string>
     <string name="server_reset">Use vuhpquang.com</string>
     <string name="action_save">Save</string>
+    <!-- 0.3.0: full catalog + platform filter -->
+    <string name="filter_device">This phone · %1$d</string>
+    <string name="filter_all">All · %1$d</string>
+    <string name="filter_label">Show apps for</string>
+    <string name="section_other_platforms">Other platforms</string>
+    <string name="chip_not_on_device">Not on this phone</string>
+    <string name="empty_device">Nothing for this phone yet</string>
+    <string name="action_show_all">Show all apps</string>
+    <string name="action_open_web">Open on the web</string>
+    <string name="action_web_page">Web page</string>
+    <string name="action_share_web">Share link</string>
+    <string name="available_for">Available for %1$s</string>
+    <string name="also_on">Also on %1$s · %2$s</string>
+    <string name="also_on_no_release">Also on %1$s</string>
+    <string name="not_on_device_note">There\'s no Android version of %1$s. Open its page or share the link to get it on another device.</string>
+    <string name="platforms_label">Platforms</string>
+    <string name="platform_android" translatable="false">Android</string>
+    <string name="platform_macos" translatable="false">macOS</string>
+    <string name="platform_windows" translatable="false">Windows</string>
+    <string name="platform_ios" translatable="false">iOS</string>
+    <string name="platform_web" translatable="false">Web</string>
 </resources>

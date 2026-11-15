@@ -17,7 +17,8 @@ import com.vuhpquang.appdepot.core.InstallProgress
 import com.vuhpquang.appdepot.core.PairResult
 import com.vuhpquang.appdepot.core.SELF_SLUG
 import com.vuhpquang.appdepot.core.planFor
-import com.vuhpquang.appdepot.core.matchesQuery
+import com.vuhpquang.appdepot.core.ANDROID
+import com.vuhpquang.appdepot.core.localApps
 import android.util.Log
 import com.vuhpquang.appdepot.android.DEPOT_BASE_URL
 import com.vuhpquang.appdepot.core.normalizeServerUrl
@@ -42,8 +43,11 @@ data class AppRow(
 )
 
 data class HomeUi(
-    /** Every app, in the chosen [sort] order. */
+    /** This phone's apps (Android catalog entries only), in the chosen [sort] order. Update all covers these. */
     val rows: List<AppRow> = emptyList(),
+    /** Every product of the full catalog (all platforms), unsorted; [sections] is what the list shows. */
+    val products: List<ProductRow> = emptyList(),
+    val filter: PlatformFilter = PlatformFilter.Device,
     val refreshing: Boolean = false,
     val refreshFailed: Boolean = false,
     /** True once a catalog (cached or fresh) has been read, so "no apps" isn't shown while loading. */
@@ -55,8 +59,13 @@ data class HomeUi(
 ) {
     val updatable: List<AppRow> get() = rows.filter { it.state is AppState.UpdateAvailable }
 
-    /** What the list shows: [rows] filtered by the search [query]. Update all still covers every app. */
-    val visible: List<AppRow> get() = if (query.isBlank()) rows else rows.filter { matchesQuery(it.app, query) }
+    /** What the list shows: products by filter, search and sort; this phone's first. Update all still covers every app. */
+    val sections: HomeSections get() = homeSections(products, filter, sort, query)
+
+    val counts: FilterCounts get() = filterCounts(products)
+
+    /** The product a detail page shows, found by any of its entries' slugs. */
+    fun product(slug: String): ProductRow? = products.firstOrNull { p -> p.product.variants.values.any { it.slug == slug } }
 
     /** Any install running (one app or Update all): Update all waits for it. */
     val busy: Boolean get() = updatingAll || rows.any { it.model.activity != null }
@@ -97,8 +106,10 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     private data class Inputs(
         val apps: List<CatalogApp>?, val installed: Map<String, String?>, val launchable: Set<String>, val skipped: Map<String, String>,
     )
-    private data class View(val layout: HomeLayout, val sort: SortOrder, val query: String)
-    private val view = MutableStateFlow(View(HomeLayout.fromKey(settings.layout), SortOrder.fromKey(settings.sort), ""))
+    private data class View(val layout: HomeLayout, val sort: SortOrder, val query: String, val filter: PlatformFilter)
+    private val view = MutableStateFlow(
+        View(HomeLayout.fromKey(settings.layout), SortOrder.fromKey(settings.sort), "", PlatformFilter.fromKey(settings.platformFilter)),
+    )
 
     val versionName: String get() = app.versionName
     val versionCode: Long get() = app.versionCode
@@ -109,9 +120,12 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         combine(refreshing, refreshFailed, updatingAll, ::Triple),
         view,
     ) { (apps, inst, launch, skip), progress, (isRefreshing, failed, all), v ->
-        val rows = (apps ?: emptyList()).map { a -> rowFor(a, inst[a.slug], a.slug in launch, progress[a.slug], skip[a.slug]) }
+        // Rows are planned for this phone's entries only; the other platforms just get a product card.
+        val products = productRows(apps ?: emptyList(), ANDROID) { a -> rowFor(a, inst[a.slug], a.slug in launch, progress[a.slug], skip[a.slug]) }
         HomeUi(
-            rows = sortRows(rows, v.sort),
+            rows = sortRows(products.mapNotNull { it.row }, v.sort),
+            products = products,
+            filter = v.filter,
             refreshing = isRefreshing,
             refreshFailed = failed,
             loaded = apps != null,
@@ -181,7 +195,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
                     if (catalog.value == null) catalog.value = emptyList()
                 }
                 reloadInstalled()
-                result.getOrNull()?.let { apps ->
+                result.getOrNull()?.let(::localApps)?.let { apps ->
                     val versions = installed.value
                     val skip = skipped.value
                     val n = apps.count { planFor(it, versions[it.slug], skip[it.slug]) is AppState.UpdateAvailable }
@@ -230,7 +244,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     }
 
     private suspend fun reloadInstalled() {
-        val apps = catalog.value ?: return
+        val apps = catalog.value?.let(::localApps) ?: return
         val pretend = withContext(Dispatchers.IO) { app.readPretend() }
         val versions = HashMap<String, String?>()
         val launch = HashSet<String>()
@@ -248,8 +262,11 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
 
     // --- Installs ------------------------------------------------------------------------------
 
+    /** This phone's catalog entry for [slug]; entries of other platforms are never installed, opened or removed. */
+    private fun localApp(slug: String): CatalogApp? = catalog.value?.firstOrNull { it.slug == slug && it.platform == ANDROID }
+
     fun install(slug: String) {
-        val a = catalog.value?.firstOrNull { it.slug == slug } ?: return
+        val a = localApp(slug) ?: return
         app.scope.launch {
             coordinator.install(a)
             if (coordinator.progress.value[slug] == InstallProgress.NeedsPermission) afterPermission = { install(slug) }
@@ -272,7 +289,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
 
     /** Looks the launch intent up off the main thread, then hands it to [start] on the main thread. */
     fun open(slug: String, start: (Intent) -> Unit) {
-        val a = catalog.value?.firstOrNull { it.slug == slug } ?: return
+        val a = localApp(slug) ?: return
         viewModelScope.launch {
             val intent = withContext(Dispatchers.IO) { app.installedApps.launchIntent(a.appId) } ?: return@launch
             start(intent)
@@ -289,7 +306,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     /** The system uninstall dialog for [slug]; null for App Depot itself or an unknown app. */
     fun uninstallIntent(slug: String): Intent? {
         if (slug == SELF_SLUG) return null
-        val a = catalog.value?.firstOrNull { it.slug == slug } ?: return null
+        val a = localApp(slug) ?: return null
         return Intent(Intent.ACTION_DELETE, Uri.parse("package:${a.appId}"))
     }
 
@@ -326,6 +343,11 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setQuery(query: String) = view.update { it.copy(query = query) }
+
+    fun setFilter(filter: PlatformFilter) {
+        settings.platformFilter = filter.key
+        view.update { it.copy(filter = filter) }
+    }
 
     fun unknownSourcesIntent(): Intent =
         Intent(SystemSettings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))

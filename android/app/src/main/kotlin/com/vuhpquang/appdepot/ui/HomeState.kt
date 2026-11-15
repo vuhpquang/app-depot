@@ -8,7 +8,7 @@ import com.vuhpquang.appdepot.core.InstallProgress
 enum class CardAction { Install, Update, Open }
 
 /** The state chip; null for a plain not-installed app (its "Latest X" line says enough). */
-enum class CardChip { UpToDate, UpdateAvailable, Skipped, LocalBuild, NoRelease, NotInstallable, SelfUpdates }
+enum class CardChip { UpToDate, UpdateAvailable, Skipped, LocalBuild, NoRelease, NotInstallable, SelfUpdates, NotOnThisDevice }
 
 /** An install in flight: replaces the button with a progress line. */
 sealed interface CardActivity {

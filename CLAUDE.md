@@ -21,6 +21,14 @@ portfolio). Phase 2 = Android app in `android/`; phase 3 = macOS app (SwiftUI).
 - Android prefs added in 0.2.0: `appdepot.ui.layout` (`list`|`grid`), `appdepot.ui.sort` (`updates`|`name`|`recent`),
   `appdepot.skipped` (`slug=version` lines). A skipped version plans as `AppState.Skipped` (chip "Skipped"):
   no badge, not in Update all or background notify/install, until a newer version is published.
+- Full catalog (0.3.0): `CatalogRepository` fetches `/api/depot/catalog` with no `platform` query and caches every
+  platform in `catalog.json`. `core/Products.kt` groups entries by `projectSlug` (else `slug`) into products and
+  `localApps` keeps the `android` ones: install, open, uninstall, Update all, `reloadInstalled` and `CheckWorker`
+  only ever use those (app ids collide across platforms: `app-depot-macos` is also `com.vuhpquang.appdepot`).
+  Home list = `ui/ProductList.kt` (`ProductListTest`): filter `appdepot.ui.platformFilter` (`device` default | `all`)
+  with counts, this phone's products first then "Other platforms"; non-Android products get "Not on this phone",
+  no Install, "Open on the web" (`vuhpquang.com/projects/<projectSlug>`) and "Share link". Platform badges show
+  on cards when the filter is All and always in the detail page ("Also on macOS · X" for products on both).
 - Uninstall: `Intent.ACTION_DELETE` (`REQUEST_DELETE_PACKAGES`); the `uninstall` history row is local-only
   (`LOCAL_ONLY_EVENT_TYPES` in `core/DepotEvent.kt` keeps it out of the outbox: the server's event types are closed).
 - Icons: catalog `iconUrl`, cached on disk in `cacheDir/icons/<sha256(url)>.png` (refetched after 7 days),
@@ -34,6 +42,7 @@ portfolio). Phase 2 = Android app in `android/`; phase 3 = macOS app (SwiftUI).
 cd android && export JAVA_HOME=/Users/quangvu/Library/Java/JavaVirtualMachines/corretto-17.0.13/Contents/Home
 ./gradlew :app:testDebugUnitTest :app:assembleDebug     # tests + debug APK (.dev)
 android/scripts/release.sh X.Y.Z notes.md               # tests, signed APK, signer check, tag android-vX.Y.Z, GitHub release (not Latest)
+# release.sh runs on `main` or on a branch whose HEAD equals origin/main (worktrees), pushing HEAD:main
 PUBLISH=0 android/scripts/release.sh X.Y.Z notes.md     # office: commit + tag locally only
 scripts/depot-publish.sh app-depot-android              # from the hub, after the release: puts it in the catalog
 ```
