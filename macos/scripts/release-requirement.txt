@@ -1,0 +1,1 @@
+identifier "com.vuhpquang.appdepot" and certificate leaf = H"bdb038565c0a5953d1b1413226c2814b72d0739b"

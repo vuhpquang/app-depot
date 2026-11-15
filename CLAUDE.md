@@ -49,3 +49,40 @@ scripts/depot-publish.sh app-depot-android              # from the hub, after th
 - Other apps hand over updates to App Depot: ZenTask Android checks whether `com.vuhpquang.appdepot`
   is installed and, if so, shows "Updates are managed by App Depot" instead of its own updater.
   Personal Wiki Android publishes itself to the catalog from its CI (see the hub rule `app-depot.md`).
+
+## macOS: commands, release, testing
+
+Swift Package in `macos/` (macOS 26+, Swift 6): `DepotCore` (pure rules ported from Android `core/`, with its
+test cases) + `AppDepot` (SwiftUI/AppKit). app-shell is a submodule at `macos/Vendor/app-shell` (About,
+Settings shell, What's New, self-update from the catalog entry `app-depot-macos` via `CatalogTransport`).
+
+```bash
+cd macos && git submodule update --init --recursive
+swift build && swift test
+SIGN_IDENTITY=- ./build.sh                                  # dev build, ad-hoc (release.sh refuses these)
+APPDEPOT_SNAPSHOT=/tmp/shots .build/debug/AppDepot          # every screen → PNG, light + dark (fixture catalog)
+APPDEPOT_INSTALL_ROOT=/tmp/root .build/debug/AppDepot --install-slug padlet   # DEBUG: real verified install into /tmp/root
+INSTALL=1 macos/scripts/release.sh X.Y.Z docs/release-notes/macos-X.Y.Z.md    # tag macos-vX.Y.Z, release (not Latest), install
+scripts/depot-publish.sh app-depot-macos                    # from the hub, after the release
+```
+
+- Version = `macos/VERSION` (build number `a*10000+b*100+c`, written into Info.plist by build.sh/release.sh).
+  Asset `AppDepot-X.Y.Z-macos.zip`. Icon: `macos/scripts/make-icon.swift` renders `assets/make-icon.swift`.
+- Signing: "App Depot Self-Signed" (`macos/scripts/make-signing-identity.sh`, backup `~/.config/app-depot-macos-signing/`,
+  never committed or printed). Its designated requirement is pinned in `macos/scripts/release-requirement.txt`
+  (= the catalog `signer` of `app-depot-macos`); release.sh refuses any other signer.
+- release.sh runs on `main` or on a branch whose HEAD equals `origin/main` (worktrees), pushing `HEAD:main`.
+- Install path (`Install/MacInstaller.swift`): size + SHA-256 → app-shell `ExternalInstaller.stage` (bundle id,
+  `codesign --strict`) → requirement = installed copy's designated requirement, else catalog `signer`, else
+  refused ("This app can't be installed safely yet.") → `replace` quits only the running copy at that exact path.
+  `ReplaceGuard` (DepotCore) is the gate: Wisp (`selfUpdates`), DevKit (`none`), local builds, skipped and
+  up-to-date apps never reach the installer. App Depot itself goes through app-shell's `Updater`, last.
+- `APPDEPOT_INSTALL_ROOT` confines every lookup and install to that folder (tests, dev). Tests use fakes
+  (`AppProcessControlling`) and ad-hoc bundles built in temp folders; they never touch `/Applications`.
+- Background (`Background/`): 10 s after launch, then every 6 h while auto-check is on; auto-install (off by
+  default) only updates managed apps that aren't running; running ones are announced. Settings keys:
+  `appShell.updates.autoCheck/autoInstall`, `appdepot.ui.layout|sort`, `appdepot.skipped`, `appdepot.background.*`.
+  Debug runs use the `com.vuhpquang.appdepot.debug` defaults domain and support folder; DEBUG
+  `APPDEPOT_PRETEND=slug=version,…` fakes installed versions.
+- Data: SQLite history (2000) + outbox (1000) in Application Support; pairing token in the Keychain
+  (`com.vuhpquang.appdepot.pairing`; debug builds keep it in their defaults domain).
