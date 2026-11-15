@@ -9,14 +9,15 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-class CatalogRepository(context: Context, private val baseUrl: String) {
+/** [baseUrl] is read on every refresh so the debug Server setting applies without a restart. */
+class CatalogRepository(context: Context, private val baseUrl: () -> String) {
     private val versionName: String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "0"
     private val cacheFile = File(context.filesDir, "catalog.json")
 
     suspend fun refresh(): Result<List<CatalogApp>> = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = URL("${baseUrl.trimEnd('/')}/api/depot/catalog?platform=android")
+            val conn = URL("${baseUrl().trimEnd('/')}/api/depot/catalog?platform=android")
                 .openConnection() as HttpURLConnection
             val body = try {
                 conn.connectTimeout = 20_000

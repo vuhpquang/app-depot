@@ -26,10 +26,16 @@ class Settings(context: Context) {
         get() = prefs.getString(KEY_LAST_SEEN, null)
         set(v) = prefs.edit().putString(KEY_LAST_SEEN, v).apply()
 
+    /** Debug builds only: catalog + device API server; null = [DEPOT_BASE_URL]. */
+    var serverUrl: String?
+        get() = prefs.getString(KEY_SERVER_URL, null)
+        set(v) = prefs.edit().apply { if (v == null) remove(KEY_SERVER_URL) else putString(KEY_SERVER_URL, v) }.apply()
+
     companion object {
         const val KEY_AUTO_CHECK = "appdepot.updates.autoCheck"
         const val KEY_AUTO_INSTALL = "appdepot.updates.autoInstall"
         const val KEY_LAST_CHECKED = "appdepot.updates.lastChecked"
         const val KEY_LAST_SEEN = "appdepot.whatsNew.lastSeenVersion"
+        const val KEY_SERVER_URL = "appdepot.debug.serverUrl"
     }
 }

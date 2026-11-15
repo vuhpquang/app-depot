@@ -14,11 +14,11 @@ import java.net.URL
 
 const val DEPOT_BASE_URL = "https://vuhpquang.com"
 
-class DepotApi(private val baseUrl: String, private val versionName: String) {
+class DepotApi(private val baseUrl: () -> String, private val versionName: String) {
     private data class Reply(val status: Int, val body: String)
 
     private suspend fun post(path: String, json: String, bearer: String?): Reply = withContext(Dispatchers.IO) {
-        val conn = URL("${baseUrl.trimEnd('/')}$path").openConnection() as HttpURLConnection
+        val conn = URL("${baseUrl().trimEnd('/')}$path").openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 20_000

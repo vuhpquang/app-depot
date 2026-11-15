@@ -34,6 +34,9 @@ object DepotTokens {
     /** Small leading icon in list rows (history). */
     val IconRow = 24.dp
     val ProgressHeight = 4.dp
+
+    /** Content alpha for disabled rows (Material's disabled level). */
+    const val DisabledAlpha = 0.38f
 }
 
 // Every role is set: Material's defaults are a lavender baseline that doesn't belong to this app.

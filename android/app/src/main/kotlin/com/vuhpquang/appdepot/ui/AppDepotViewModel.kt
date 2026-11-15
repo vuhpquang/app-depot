@@ -2,7 +2,6 @@ package com.vuhpquang.appdepot.ui
 
 import android.app.Application
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
@@ -17,6 +16,10 @@ import com.vuhpquang.appdepot.core.InstallProgress
 import com.vuhpquang.appdepot.core.PairResult
 import com.vuhpquang.appdepot.core.SELF_SLUG
 import com.vuhpquang.appdepot.core.planFor
+import android.util.Log
+import com.vuhpquang.appdepot.android.DEPOT_BASE_URL
+import com.vuhpquang.appdepot.core.normalizeServerUrl
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -59,6 +62,8 @@ data class SettingsUi(
     val deviceName: String,
     val pairing: Boolean = false,
     val pairError: PairError? = null,
+    /** Debuggable builds only; null hides the Server field. */
+    val serverUrl: String? = null,
 )
 
 enum class PairError { BadCode, Failed }
@@ -70,7 +75,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     private val app = application as AppDepotApplication
     private val settings = app.settings
     private val coordinator = app.coordinator
-    private val isDebuggable = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    private val isDebuggable = app.isDebuggable
 
     private val catalog = MutableStateFlow<List<CatalogApp>?>(null)
     private val installed = MutableStateFlow<Map<String, String?>>(emptyMap())
@@ -107,14 +112,14 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     private val _history = MutableStateFlow<List<HistoryRow>>(emptyList())
     val history: StateFlow<List<HistoryRow>> = _history.asStateFlow()
 
-    /** What to run again once "Install unknown apps" is granted. */
-    private var afterPermission: (() -> Unit)? = null
+    /** What to run again once "Install unknown apps" is granted; set only when an install stopped for it. */
+    @Volatile private var afterPermission: (() -> Unit)? = null
 
     init {
         viewModelScope.launch {
             catalog.value = withContext(Dispatchers.IO) { app.catalog.cached() }
             reloadInstalled()
-            refresh()
+            autoRefresh()
         }
         // A finished install changes the installed version: re-read it, then let the card show the new state.
         viewModelScope.launch {
@@ -138,32 +143,60 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
 
     // --- Catalog -------------------------------------------------------------------------------
 
+    /** Manual check (pull to refresh, Check now, Check for updates): always runs. */
     fun refresh() {
         if (refreshing.value) return
         refreshing.value = true
         viewModelScope.launch {
-            val result = app.catalog.refresh()
-            result.onSuccess { apps ->
-                catalog.value = apps
-                refreshFailed.value = false
-                settings.lastChecked = System.currentTimeMillis()
-                _settings.update { it.copy(lastChecked = settings.lastChecked) }
-            }.onFailure {
-                refreshFailed.value = true
-                if (catalog.value == null) catalog.value = emptyList()
-            }
-            reloadInstalled()
-            if (result.isSuccess) {
-                val n = home.value.updatable.size
-                withContext(Dispatchers.IO) {
-                    app.history.record(DepotEvent("check", message = if (n == 1) "1 update" else "$n updates"))
-                    app.uploader.flush()
+            try {
+                val result = app.catalog.refresh()
+                result.onSuccess { apps ->
+                    catalog.value = apps
+                    refreshFailed.value = false
+                    settings.lastChecked = System.currentTimeMillis()
+                    _settings.update { it.copy(lastChecked = settings.lastChecked) }
+                }.onFailure {
+                    refreshFailed.value = true
+                    if (catalog.value == null) catalog.value = emptyList()
                 }
-                maybeShowWhatsNew()
+                reloadInstalled()
+                result.getOrNull()?.let { apps ->
+                    val versions = installed.value
+                    val n = apps.count { planFor(it, versions[it.slug]) is AppState.UpdateAvailable }
+                    withContext(Dispatchers.IO) {
+                        recordCheck(if (n == 1) "1 update" else "$n updates")
+                        app.uploader.flush()
+                    }
+                    maybeShowWhatsNew()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("AppDepot", "refresh failed", e)
+            } finally {
+                refreshing.value = false
+                loadHistory()
             }
-            refreshing.value = false
-            loadHistory()
         }
+    }
+
+    /**
+     * A `check` row only when it says something new: repeated identical checks collapse into one.
+     * `depot_started` rows (hidden telemetry, one per launch) don't count as "something in between".
+     */
+    private fun recordCheck(message: String) {
+        val last = app.history.recent(20).firstOrNull { it.type != "depot_started" }
+        if (last != null && last.type == "check" && last.message == message) return
+        app.history.record(DepotEvent("check", message = message))
+    }
+
+    /**
+     * Launch / resume: only while "Check for updates automatically" is on (or there is no list at all yet),
+     * and at most every [RESUME_REFRESH_MS].
+     */
+    private fun autoRefresh() {
+        val stale = System.currentTimeMillis() - settings.lastChecked > RESUME_REFRESH_MS
+        if (catalog.value.isNullOrEmpty() || (settings.autoCheck && stale)) refresh()
     }
 
     /** Coming back to the app: pick up installs/uninstalls made elsewhere and a granted permission. */
@@ -173,12 +206,13 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
             val canInstall = app.packageManager.canRequestPackageInstalls()
             val waiting = coordinator.progress.value.filterValues { it == InstallProgress.NeedsPermission }.keys
             if (canInstall && waiting.isNotEmpty()) {
+                // The user just granted "Install unknown apps" for this: carry on with what they asked for.
                 waiting.forEach { coordinator.clear(it) }
-                afterPermission?.invoke()
+                val retry = afterPermission
                 afterPermission = null
-                refresh()
-            } else if (System.currentTimeMillis() - settings.lastChecked > RESUME_REFRESH_MS) {
-                refresh()
+                retry?.invoke()
+            } else if (catalog.value != null) {
+                autoRefresh()
             }
         }
     }
@@ -211,14 +245,15 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
 
     fun install(slug: String) {
         val a = catalog.value?.firstOrNull { it.slug == slug } ?: return
-        afterPermission = { install(slug) }
-        app.scope.launch { coordinator.install(a) }
+        app.scope.launch {
+            coordinator.install(a)
+            if (coordinator.progress.value[slug] == InstallProgress.NeedsPermission) afterPermission = { install(slug) }
+        }
     }
 
     fun updateAll() {
         val apps = home.value.updatable.map { it.app }
         if (apps.isEmpty() || home.value.busy) return
-        afterPermission = { updateAll() }
         updatingAll.value = true
         app.scope.launch {
             try {
@@ -226,6 +261,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
             } finally {
                 updatingAll.value = false
             }
+            if (coordinator.progress.value.values.any { it == InstallProgress.NeedsPermission }) afterPermission = { updateAll() }
         }
     }
 
@@ -261,6 +297,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         lastChecked = settings.lastChecked,
         paired = app.pairing.isPaired,
         deviceName = deviceName(),
+        serverUrl = if (isDebuggable) app.baseUrl else null,
     )
 
     private fun deviceName() = "${Build.MANUFACTURER} ${Build.MODEL}"
@@ -292,6 +329,16 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
                 )
             }
         }
+    }
+
+    /** Debug only. Returns false when the text isn't an http(s) URL. Blank = back to vuhpquang.com. */
+    fun setServerUrl(input: String): Boolean {
+        if (!isDebuggable) return false
+        val url = if (input.isBlank()) null else normalizeServerUrl(input) ?: return false
+        settings.serverUrl = url?.takeIf { it != DEPOT_BASE_URL }
+        _settings.update { it.copy(serverUrl = app.baseUrl) }
+        refresh()
+        return true
     }
 
     fun disconnect() {

@@ -1,5 +1,6 @@
 package com.vuhpquang.appdepot.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -36,11 +38,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vuhpquang.appdepot.R
@@ -91,6 +98,7 @@ fun SettingsScreen(vm: AppDepotViewModel, onBack: () -> Unit) {
             }
             Section(stringResource(R.string.section_connection)) { ConnectionBlock(s, vm) }
             Section(stringResource(R.string.section_about)) { AboutBlock(vm, home) }
+            s.serverUrl?.let { url -> Section(stringResource(R.string.section_debug)) { ServerBlock(url, vm) } }
         }
     }
 }
@@ -114,7 +122,7 @@ private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) 
 
 @Composable
 private fun SwitchRow(title: String, summary: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    val alpha = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val alpha = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = DepotTokens.DisabledAlpha)
     Row(
         Modifier.fillMaxWidth().heightIn(min = DepotTokens.TouchMin)
             .padding(horizontal = DepotTokens.SpaceMd, vertical = DepotTokens.SpaceSm),
@@ -188,7 +196,7 @@ private fun AboutBlock(vm: AppDepotViewModel, home: HomeUi) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm),
     ) {
-        AppIcon(stringResource(R.string.app_name), null, size = DepotTokens.IconHeader)
+        LauncherIcon(DepotTokens.IconHeader)
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
         Text(stringResource(R.string.tagline), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Text(stringResource(R.string.version_line, vm.versionName, vm.versionCode.toInt()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -236,6 +244,54 @@ private fun AboutBlock(vm: AppDepotViewModel, home: HomeUi) {
         }
         LinkText(stringResource(R.string.link_source)) { context.openUrl(REPO_URL) }
         Text(stringResource(R.string.copyright), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** App Depot's own launcher icon (the adaptive crate), drawn with the system's icon mask. */
+@Composable
+private fun LauncherIcon(size: Dp) {
+    val context = LocalContext.current
+    val px = with(LocalDensity.current) { size.roundToPx() }
+    val bitmap = remember(px) {
+        runCatching { context.packageManager.getApplicationIcon(context.packageName).toBitmap(px, px).asImageBitmap() }.getOrNull()
+    }
+    if (bitmap != null) {
+        Image(bitmap, contentDescription = null, modifier = Modifier.size(size))
+    } else {
+        AppIcon(stringResource(R.string.app_name), null, size = size)
+    }
+}
+
+/** Debuggable builds only: which server the catalog and device API talk to. */
+@Composable
+private fun ServerBlock(current: String, vm: AppDepotViewModel) {
+    var text by rememberSaveable(current) { mutableStateOf(current) }
+    var invalid by remember { mutableStateOf(false) }
+    Column(
+        Modifier.padding(horizontal = DepotTokens.SpaceMd, vertical = DepotTokens.SpaceSm),
+        verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm),
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it; invalid = false },
+            label = { Text(stringResource(R.string.server_label)) },
+            supportingText = {
+                Text(stringResource(if (invalid) R.string.server_invalid else R.string.server_hint))
+            },
+            isError = invalid,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { invalid = !vm.setServerUrl(text) }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm)) {
+            TextButton({ text = ""; invalid = !vm.setServerUrl("") }, Modifier.heightIn(min = DepotTokens.TouchMin)) {
+                Text(stringResource(R.string.server_reset))
+            }
+            FilledTonalButton({ invalid = !vm.setServerUrl(text) }, Modifier.heightIn(min = DepotTokens.TouchMin), enabled = text.trim() != current) {
+                Text(stringResource(R.string.action_save))
+            }
+        }
     }
 }
 

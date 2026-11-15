@@ -1,6 +1,7 @@
 package com.vuhpquang.appdepot
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import com.vuhpquang.appdepot.android.CatalogRepository
 import com.vuhpquang.appdepot.android.DEPOT_BASE_URL
 import com.vuhpquang.appdepot.android.DepotApi
@@ -29,13 +30,18 @@ class AppDepotApplication : Application() {
         runCatching { packageManager.getPackageInfo(packageName, 0).longVersionCode }.getOrDefault(0L)
     }
 
-    val api: DepotApi by lazy { DepotApi(DEPOT_BASE_URL, versionName) }
+    val isDebuggable: Boolean by lazy { (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0 }
+
+    /** vuhpquang.com, or the debug-only Server setting in debuggable builds. */
+    val baseUrl: String get() = if (isDebuggable) settings.serverUrl ?: DEPOT_BASE_URL else DEPOT_BASE_URL
+
+    val api: DepotApi by lazy { DepotApi({ baseUrl }, versionName) }
     val pairing: Pairing by lazy { Pairing(this, api, versionName) }
     val history: History by lazy { History(this) { scope.launch { uploader.flush() } } }
     val uploader: EventUploader by lazy { EventUploader(history.db, pairing, api) }
 
     val settings: Settings by lazy { Settings(this) }
-    val catalog: CatalogRepository by lazy { CatalogRepository(this, DEPOT_BASE_URL) }
+    val catalog: CatalogRepository by lazy { CatalogRepository(this) { baseUrl } }
     val installedApps: InstalledApps by lazy { InstalledApps(this) }
 
     /** Process-wide: installs outlive any screen. */
