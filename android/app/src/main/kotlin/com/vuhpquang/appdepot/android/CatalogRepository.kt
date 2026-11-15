@@ -10,13 +10,18 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * The full catalog, every platform (filtering is done in the app, see `core/Products.kt`), cached in `catalog.json`.
+ * The full catalog, every platform (filtering is done in the app, see `core/Products.kt`), cached in `catalog-all.json`.
  * [baseUrl] is read on every refresh so the debug Server setting applies without a restart.
  */
 class CatalogRepository(context: Context, private val baseUrl: () -> String) {
     private val versionName: String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "0"
-    private val cacheFile = File(context.filesDir, "catalog.json")
+    // 0.3.0 switched to the full catalog. Before that `catalog.json` held Android apps only, and loading it
+    // after an update showed "All · 3" until the next refresh (which waits 5 minutes after a check), so
+    // the full catalog gets its own file and the old one is dropped: the first launch refreshes.
+    private val cacheFile = File(context.filesDir, "catalog-all.json").also {
+        File(context.filesDir, "catalog.json").delete()
+    }
 
     suspend fun refresh(): Result<List<CatalogApp>> = withContext(Dispatchers.IO) {
         runCatching {
@@ -34,7 +39,7 @@ class CatalogRepository(context: Context, private val baseUrl: () -> String) {
                 conn.disconnect()
             }
             val apps = parseCatalog(body).getOrThrow()
-            val tmp = File(cacheFile.parentFile, "catalog.json.tmp")
+            val tmp = File(cacheFile.parentFile, "catalog-all.json.tmp")
             tmp.writeText(body)
             check(tmp.renameTo(cacheFile)) { "Could not write catalog cache" }
             apps
