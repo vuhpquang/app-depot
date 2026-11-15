@@ -74,9 +74,10 @@ public enum ReplaceGuard {
     public enum Refusal: Error, Equatable { case noSigner }
 
     /// Only `managed` apps that are not installed or have an available update get an install path.
-    /// Wisp (`selfUpdates`), DevKit (`none`), local builds, skipped, up to date and no-release never do.
+    /// Wisp (`selfUpdates`), DevKit (`none`), local builds, skipped, up to date, no-release and entries for
+    /// another platform (an Android APK can share a bundle id with a Mac app) never do.
     public static func canInstall(_ app: CatalogApp, state: AppState) -> Bool {
-        guard app.installMode == InstallMode.managed, app.latest != nil else { return false }
+        guard app.platform == macPlatform, app.installMode == InstallMode.managed, app.latest != nil else { return false }
         switch state {
         case .notInstalled, .updateAvailable: return true
         default: return false

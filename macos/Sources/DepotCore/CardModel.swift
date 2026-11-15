@@ -4,7 +4,7 @@ import Foundation
 public enum CardAction: Equatable, Sendable { case install, update, open }
 
 /// The state chip; nil for a plain not-installed app (its "Latest X" line says enough).
-public enum CardChip: Equatable, Sendable { case upToDate, updateAvailable, skipped, localBuild, noRelease, notInstallable, selfUpdates }
+public enum CardChip: Equatable, Sendable { case upToDate, updateAvailable, skipped, localBuild, noRelease, notInstallable, selfUpdates, notOnThisDevice }
 
 /// An install in flight: replaces the button with a progress line.
 public enum CardActivity: Equatable, Sendable { case queued, downloading(percent: Int), verifying, installing }

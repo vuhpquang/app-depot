@@ -27,31 +27,36 @@ public enum SortOrder: String, CaseIterable, Sendable {
     public init(key: String?) { self = key.flatMap(SortOrder.init(rawValue:)) ?? .updatesFirst }
 }
 
-private func byName(_ a: AppRow, _ b: AppRow) -> Bool {
-    let x = foldForSearch(a.app.name), y = foldForSearch(b.app.name)
-    return x != y ? x < y : a.app.slug < b.app.slug
+private func byName(_ a: CatalogApp, _ b: CatalogApp) -> Bool {
+    let x = foldForSearch(a.name), y = foldForSearch(b.name)
+    return x != y ? x < y : a.slug < b.slug
 }
 
-public func sortRows(_ rows: [AppRow], _ order: SortOrder) -> [AppRow] {
+/// Sorts anything that shows a catalog entry; `state` is nil for items with no plan (other platforms).
+func sortItems<T>(_ items: [T], _ order: SortOrder, app: (T) -> CatalogApp, state: (T) -> AppState?) -> [T] {
     switch order {
     case .updatesFirst:
-        return rows.sorted { a, b in
-            let x = a.state.isUpdateAvailable ? 0 : 1, y = b.state.isUpdateAvailable ? 0 : 1
-            return x != y ? x < y : byName(a, b)
+        return items.sorted { a, b in
+            let x = state(a)?.isUpdateAvailable == true ? 0 : 1, y = state(b)?.isUpdateAvailable == true ? 0 : 1
+            return x != y ? x < y : byName(app(a), app(b))
         }
     case .name:
-        return rows.sorted(by: byName)
+        return items.sorted { byName(app($0), app($1)) }
     case .recentlyReleased:
         // ISO-8601 timestamps sort as text; apps without a release go last.
-        return rows.sorted { a, b in
-            switch (a.app.latest?.publishedAt, b.app.latest?.publishedAt) {
+        return items.sorted { a, b in
+            switch (app(a).latest?.publishedAt, app(b).latest?.publishedAt) {
             case let (x?, y?) where x != y: return x > y
             case (nil, _?): return false
             case (_?, nil): return true
-            default: return byName(a, b)
+            default: return byName(app(a), app(b))
             }
         }
     }
+}
+
+public func sortRows(_ rows: [AppRow], _ order: SortOrder) -> [AppRow] {
+    sortItems(rows, order, app: \.app, state: \.state)
 }
 
 /// Bytes to download for the primary Install / Update action; nil when there is nothing to download.

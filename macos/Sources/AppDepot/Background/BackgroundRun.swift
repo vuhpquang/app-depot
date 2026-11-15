@@ -85,7 +85,8 @@ final class BackgroundRun {
             let shown = await notifier.finishUpdating(needsYou.compactMap { bySlug[$0]?.name })
             if !shown { for slug in needsYou { failed[slug] = nil } }
         }
-        let deferSelf = plan.install.contains(selfSlug) && isAppActive()
+        // Never while the user is in the app, and never while another install is still queued or running.
+        let deferSelf = plan.install.contains(selfSlug) && (isAppActive() || !selfMayStart(progress: model.coordinator.progress))
         if deferSelf { saveTold[selfSlug] = told[selfSlug] }
         defaults.set(formatSlugMap(saveTold.compactMapValues { $0 }), forKey: Keys.notified)
         // Forget failures once the app moved on to another version or is no longer updatable.

@@ -17,6 +17,9 @@ final class InstallCoordinator {
     @ObservationIgnored var skipped: () -> [String: String] = { [:] }
     /// Hands App Depot's own update to app-shell's Updater (runs after everything else).
     @ObservationIgnored var selfUpdate: (@MainActor () async -> Void)?
+    /// The other apps with an available (not skipped) update, run before App Depot's own update.
+    @ObservationIgnored var updatableOthers: () -> [CatalogApp] = { [] }
+    @ObservationIgnored private var selfWaiting = false
 
     @ObservationIgnored private var tail: Task<Void, Never>?
 
@@ -38,7 +41,11 @@ final class InstallCoordinator {
     @discardableResult
     func install(_ app: CatalogApp, interactive: Bool = true) async -> InstallOutcome? {
         if app.slug == selfSlug {
-            await selfUpdate?()
+            // App Depot updates the others, so it goes last: run their updates first, same queue as Update all.
+            let others = updatableOthers()
+            let order = planSelfUpdate(updatable: others.map(\.slug))
+            let bySlug = Dictionary((others + [app]).map { ($0.slug, $0) }, uniquingKeysWith: { a, _ in a })
+            _ = await updateAll(order.compactMap { bySlug[$0] }, interactive: interactive)
             return nil
         }
         return await updateAll([app], interactive: interactive)[app.slug]
@@ -68,8 +75,23 @@ final class InstallCoordinator {
         }
         tail = Task { _ = await job.value }
         let results = await job.value
-        if includesSelf { await selfUpdate?() }
+        if includesSelf { await requestSelfUpdate() }
         return results
+    }
+
+    /// Hands App Depot's own update to app-shell's Updater once no other install is queued or running.
+    /// While it waits its row shows "Updating N other apps first"; an install started meanwhile goes first.
+    func requestSelfUpdate() async {
+        guard !selfWaiting else { return }
+        selfWaiting = true
+        progress[selfSlug] = .queued
+        while !selfMayStart(progress: progress) {
+            await tail?.value
+            if !selfMayStart(progress: progress) { try? await Task.sleep(for: .milliseconds(200)) }
+        }
+        progress[selfSlug] = nil
+        selfWaiting = false
+        await selfUpdate?()
     }
 
     private func runOne(_ app: CatalogApp, interactive: Bool) async -> InstallOutcome {

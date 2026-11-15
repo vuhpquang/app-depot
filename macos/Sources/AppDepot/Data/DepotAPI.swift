@@ -9,9 +9,8 @@ struct DepotAPI: Sendable {
     private var userAgent: String { "AppDepot-macOS/\(version)" }
 
     var catalogURL: URL {
-        var c = URLComponents(url: baseURL.appendingPathComponent("api/depot/catalog"), resolvingAgainstBaseURL: false)!
-        c.queryItems = [URLQueryItem(name: "platform", value: "macos")]
-        return c.url!
+        // Every platform: the Mac filters on its own (Android-only apps show as "Not for Mac").
+        baseURL.appendingPathComponent("api/depot/catalog")
     }
 
     /// The raw catalog JSON (cached by the caller) and the parsed apps.

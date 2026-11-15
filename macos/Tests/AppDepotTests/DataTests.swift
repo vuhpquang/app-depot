@@ -1,4 +1,5 @@
 import DepotCore
+import CoreImage
 import Foundation
 import Testing
 @testable import AppDepot
@@ -122,5 +123,30 @@ import Testing
         await up.flush()
         #expect(!pairing.isPaired)
         #expect(s.outboxRows().count == 1, "kept for after re-pairing")
+    }
+}
+
+@Suite struct DepotAPITests {
+    @Test func catalogIsFetchedForEveryPlatform() {
+        let url = DepotAPI(version: "0.2.0").catalogURL
+        #expect(url.absoluteString == "https://vuhpquang.com/api/depot/catalog")
+        #expect(url.query == nil)
+    }
+}
+
+@Suite struct QRCodeTests {
+    @Test func encodesTheLinkSoACameraCanReadIt() throws {
+        let link = "https://vuhpquang.com/api/depot/download/personal-wiki-android"
+        let cg = try #require(QRCode.image(for: link))
+        // Scale up (nearest neighbour) the way the sheet shows it, then read it back.
+        let side = cg.width * 8
+        let ctx = try #require(CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+                                         space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        ctx.interpolationQuality = .none
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: side, height: side))
+        let big = try #require(ctx.makeImage())
+        let detector = try #require(CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: nil))
+        let found = detector.features(in: CIImage(cgImage: big)).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
+        #expect(found == [link])
     }
 }

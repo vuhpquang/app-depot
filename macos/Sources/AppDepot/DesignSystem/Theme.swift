@@ -37,6 +37,9 @@ enum Theme {
         static let windowMinWidth: CGFloat = 760
         static let windowMinHeight: CGFloat = 520
         static let menuWidth: CGFloat = 320
+        /// The QR code in "Send to phone" (its white tile adds `Spacing.l` on each side).
+        static let qrCode: CGFloat = 200
+        static let sheetWidth: CGFloat = 360
     }
 
     enum Duration {
@@ -48,5 +51,8 @@ enum Theme {
         static let card = Color(nsColor: .controlBackgroundColor)
         static let chip = Color.secondary.opacity(0.14)
         static let separator = Color(nsColor: .separatorColor)
+        /// Behind a QR code in both appearances: scanners need dark modules on a light ground.
+        static let qrTile = Color.white
+        static let qrInk = Color.black
     }
 }

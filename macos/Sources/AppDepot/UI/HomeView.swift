@@ -1,5 +1,7 @@
 // UI/HomeView.swift — the main window: apps (list or grid) on the left, the selected app on the right.
-// Toolbar: search (⌘F), sort, layout, Update all (n · size), History, refresh (⌘R).
+// The list is the whole catalog grouped into products; the platform filter ("This Mac" / "All", ⌘1 / ⌘2)
+// hides or shows apps with no Mac build, which then come last under "Other platforms".
+// Top of the list: the platform filter. Toolbar: search (⌘F), sort, layout, Update all (n · size), History, refresh (⌘R).
 import DepotCore
 import SwiftUI
 
@@ -12,10 +14,10 @@ struct HomeView: View {
         @Bindable var depot = depot
         NavigationSplitView {
             AppsColumn()
-                .navigationSplitViewColumnWidth(min: Theme.Size.sidebarMin, ideal: depot.layout == .grid ? 400 : 340, max: 560)
+                .navigationSplitViewColumnWidth(min: Theme.Size.sidebarMin, ideal: depot.layout == .grid ? 400 : (depot.platformFilter == .all ? 380 : 340), max: 560)
         } detail: {
-            if let slug = depot.selection, let row = depot.row(slug) {
-                AppDetailView(row: row)
+            if let key = depot.selection, let item = depot.product(key) {
+                ProductDetailView(item: item)
             } else {
                 ContentUnavailableView("Select an app", systemImage: "shippingbox",
                                        description: Text(depot.statusLine))
@@ -26,6 +28,8 @@ struct HomeView: View {
         .frame(minWidth: Theme.Size.windowMinWidth, minHeight: Theme.Size.windowMinHeight)
         .background {
             Button("") { searchActive = true }.keyboardShortcut("f").hidden()
+            Button("") { depot.platformFilter = .device }.keyboardShortcut("1").hidden()
+            Button("") { depot.platformFilter = .all }.keyboardShortcut("2").hidden()
         }
         .alert(item: $depot.confirmUninstall) { app in
             Alert(title: Text("Move \(app.name) to the Trash?"), message: Text(DepotModel.uninstallMessage(app)),
@@ -33,6 +37,9 @@ struct HomeView: View {
                   secondaryButton: .cancel())
         }
         .sheet(isPresented: $depot.showHistory) { HistorySheet() }
+        .sheet(item: $depot.sendToPhone) { product in
+            SendToPhoneSheet(product: product).environment(depot)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             depot.rescanInstalled()
         }
@@ -45,6 +52,9 @@ private struct AppsColumn: View {
     var body: some View {
         @Bindable var depot = depot
         VStack(spacing: 0) {
+            PlatformFilterPicker()
+                .padding(.horizontal, Theme.Spacing.m)
+                .padding(.bottom, Theme.Spacing.s)
             if let error = depot.refreshError {
                 Label(error, systemImage: "wifi.exclamationmark")
                     .font(.callout)
@@ -54,24 +64,31 @@ private struct AppsColumn: View {
                     .padding(.vertical, Theme.Spacing.s)
                 Divider()
             }
-            let rows = depot.visibleRows
-            if rows.isEmpty {
-                ContentUnavailableView {
-                    Label(depot.search.isEmpty ? depot.statusLine : "No apps match “\(depot.search)”", systemImage: "magnifyingglass")
-                }
-                .frame(maxHeight: .infinity)
+            let sections = depot.sections
+            if sections.isEmpty {
+                emptyState
             } else if depot.layout == .list {
-                List(rows, selection: $depot.selection) { row in
-                    AppListRow(row: row).tag(row.app.slug)
+                List(selection: $depot.selection) {
+                    Section {
+                        ForEach(sections.local) { AppListRow(item: $0).tag($0.product.key) }
+                    }
+                    if !sections.other.isEmpty {
+                        Section("Other platforms") {
+                            ForEach(sections.other) { AppListRow(item: $0).tag($0.product.key) }
+                        }
+                    }
                 }
                 .listStyle(.sidebar)
             } else {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: Theme.Size.gridCardWidth), spacing: Theme.Spacing.m)],
-                              spacing: Theme.Spacing.m) {
-                        ForEach(rows) { row in
-                            AppGridCard(row: row, selected: depot.selection == row.app.slug)
-                                .onTapGesture { depot.selection = row.app.slug }
+                    VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+                        grid(sections.local)
+                        if !sections.other.isEmpty {
+                            Text("Other platforms")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, Theme.Spacing.s)
+                            grid(sections.other)
                         }
                     }
                     .padding(Theme.Spacing.m)
@@ -84,6 +101,41 @@ private struct AppsColumn: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Theme.Spacing.l)
                 .padding(.vertical, Theme.Spacing.s)
+        }
+    }
+}
+
+extension AppsColumn {
+    private func grid(_ items: [ProductRow]) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: Theme.Size.gridCardWidth), spacing: Theme.Spacing.m)],
+                  spacing: Theme.Spacing.m) {
+            ForEach(items) { item in
+                AppGridCard(item: item, selected: depot.selection == item.product.key)
+                    .onTapGesture { depot.selection = item.product.key }
+            }
+        }
+    }
+
+    @ViewBuilder private var emptyState: some View {
+        if !depot.search.isEmpty {
+            ContentUnavailableView {
+                Label("No apps match “\(depot.search)”", systemImage: "magnifyingglass")
+            } actions: {
+                if depot.platformFilter == .device && depot.filterCounts.all > depot.filterCounts.device {
+                    Button("Search all apps") { depot.platformFilter = .all }
+                }
+            }
+            .frame(maxHeight: .infinity)
+        } else if depot.platformFilter == .device && depot.filterCounts.all > 0 {
+            ContentUnavailableView {
+                Label("Nothing for this Mac yet", systemImage: "laptopcomputer")
+            } actions: {
+                Button("Show all apps") { depot.platformFilter = .all }
+            }
+            .frame(maxHeight: .infinity)
+        } else {
+            ContentUnavailableView { Label(depot.statusLine, systemImage: "shippingbox") }
+                .frame(maxHeight: .infinity)
         }
     }
 }
@@ -134,5 +186,23 @@ private struct HomeToolbar: ToolbarContent {
 
     private var updateAllTitle: String {
         depot.updateCount == 0 ? "Update all" : "Update all (\(depot.updateCount)) · \(Format.bytes(depot.updateAllSize))"
+    }
+}
+
+/// "This Mac · N" / "All · M" at the top of the list (⌘1 / ⌘2), persisted as `appdepot.ui.platformFilter`.
+private struct PlatformFilterPicker: View {
+    @Environment(DepotModel.self) private var depot
+
+    var body: some View {
+        @Bindable var depot = depot
+        let counts = depot.filterCounts
+        Picker("Platforms", selection: $depot.platformFilter) {
+            Text("This Mac · \(counts.device)").tag(PlatformFilter.device)
+            Text("All · \(counts.all)").tag(PlatformFilter.all)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: .infinity)
+        .help("Show only apps for this Mac (⌘1) or every app, Android ones included (⌘2)")
     }
 }

@@ -23,13 +23,33 @@ enum Snapshot {
         env.coordinator.showForSnapshot("launch-app", .downloading(percent: 42))
         await env.icons.preload(apps.compactMap(\.iconUrl))
 
+        env.coordinator.showForSnapshot(selfSlug, .queued)
+        model.platformFilter = .device
         model.layout = .list
-        model.selection = "zentask-macos"
+        model.selection = "app-depot"
+        render(dir, "detail-self-waiting", CGSize(width: 1000, height: 640), HomeSnapshotFrame(), toolbar: true)
+        env.coordinator.showForSnapshot(selfSlug, .done(version: "0.1.1"))
+        env.coordinator.clear(selfSlug)
+        model.selection = "zentask"
         render(dir, "home-list", CGSize(width: 1000, height: 640), HomeSnapshotFrame(), toolbar: true)
         model.layout = .grid
         model.selection = "padlet"
         render(dir, "home-grid", CGSize(width: 1100, height: 640), HomeSnapshotFrame(), toolbar: true)
+        model.platformFilter = .all
         model.layout = .list
+        model.selection = "zentask"
+        render(dir, "home-list-all", CGSize(width: 1000, height: 720), HomeSnapshotFrame(), toolbar: true)
+        model.layout = .grid
+        model.selection = "personal-wiki"
+        render(dir, "home-grid-all", CGSize(width: 1100, height: 1180), HomeSnapshotFrame(), toolbar: true)
+        model.layout = .list
+        model.selection = "personal-wiki"
+        render(dir, "detail-android-only", CGSize(width: 1000, height: 720), HomeSnapshotFrame(), toolbar: true)
+        if let wiki = model.product("personal-wiki")?.product {
+            render(dir, "send-to-phone", CGSize(width: Theme.Size.sheetWidth, height: 470),
+                   SendToPhoneSheet(product: wiki).environment(model).environment(env.icons).tint(Theme.accent))
+        }
+        model.platformFilter = .device
         model.selection = "wisp"
         render(dir, "detail-wisp", CGSize(width: 1000, height: 640), HomeSnapshotFrame(), toolbar: true)
         model.selection = "quickcast"

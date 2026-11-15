@@ -98,3 +98,17 @@ scripts/depot-publish.sh app-depot-macos                    # from the hub, afte
   (`NSWorkspace.icon(forFile:)`), else the catalog `iconUrl` via `IconCache` (loaded from `.task`, never in `body`).
 - Data: SQLite history (2000) + outbox (1000) in Application Support; pairing token in the Keychain
   (`com.vuhpquang.appdepot.pairing`; debug builds keep it in their defaults domain).
+- Full catalog (0.2.0): `DepotAPI.catalogURL` has no `platform` query; `DepotModel.allApps` is every platform and
+  `apps` = `localApps` (the `macos` ones). Rows, install, open, skip, uninstall, Update all, the menu bar extra and
+  `BackgroundRun` only use those; `ReplaceGuard.canInstall` also refuses any non-`macos` entry (bundle ids collide:
+  `app-depot-android` is `com.vuhpquang.appdepot` too). Products = `DepotCore/Products.swift` (`ProductTests`):
+  grouped by `projectSlug` (else `slug`), filter `appdepot.ui.platformFilter` (`device` default | `all`, picker
+  "This Mac · N" / "All · M" at the top of the list, ⌘1/⌘2), this Mac's products first then "Other platforms".
+  Android-only products: chip "Not for Mac", no Install, "Send to phone" (`UI/SendToPhoneSheet.swift`: CoreImage QR
+  of the Android `downloadUrl`, nearest-neighbour, black on a white tile; Copy link; Esc/⌘W/Done close) and
+  "Open on the web" (`vuhpquang.com/projects/<projectSlug>`). Platform badges show on rows/cards with "All" and
+  always in detail ("Also on Android · X"). Selection is the product key.
+- App Depot updates itself last (`InstallQueue.swift`: `planSelfUpdate`, `selfMayStart`, `selfWaitingLine`):
+  Update on App Depot first queues the other available (not skipped) updates, then `InstallCoordinator.requestSelfUpdate`
+  waits until no other slug is busy (an install started meanwhile goes first) before app-shell's `Updater`; its row
+  shows "Updating N other apps first". `BackgroundRun` defers the self-update while anything else is busy.

@@ -1,10 +1,24 @@
-// UI/AppDetailView.swift — one app: status, actions (Install/Update/Open, Skip, Move to Trash, Share,
-// Release page), What's New from the catalog notes, and this app's history.
+// UI/AppDetailView.swift — one product. With a Mac build: status, actions (Install/Update/Open, Skip, Move to
+// Trash, Share, Release page), "Also on Android", What's New from the catalog notes, and this app's history.
+// Without one: "Not for Mac", Send to phone / Open on the web, and the other platform's latest release.
 import DepotCore
 import SwiftUI
 
+struct ProductDetailView: View {
+    let item: ProductRow
+
+    var body: some View {
+        if let row = item.row {
+            AppDetailView(row: row, product: item.product)
+        } else {
+            RemoteDetailView(product: item.product)
+        }
+    }
+}
+
 struct AppDetailView: View {
     let row: AppRow
+    let product: Product
     @Environment(DepotModel.self) private var depot
     @Environment(\.openURL) private var openURL
 
@@ -39,6 +53,12 @@ struct AppDetailView: View {
                 }
                 Text(row.app.tagline).foregroundStyle(.secondary)
                 HStack(spacing: Theme.Spacing.s) {
+                    PlatformBadges(product: product)
+                    if let also = alsoOnLine(product, local: macPlatform) {
+                        Text(also).font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                HStack(spacing: Theme.Spacing.s) {
                     PrimaryActionView(row: row, model: m)
                     if let bytes = downloadBytes(row), m.activity == nil, m.action == .install || m.action == .update {
                         Text(Format.bytes(bytes)).font(.callout).foregroundStyle(.secondary)
@@ -51,7 +71,8 @@ struct AppDetailView: View {
     }
 
     @ViewBuilder private var secondaryActions: some View {
-        if case .updateAvailable = row.state, ReplaceGuard.canInstall(row.app, state: row.state) {
+        if case .updateAvailable = row.state, ReplaceGuard.canInstall(row.app, state: row.state),
+           !isBusy(depot.coordinator.progress[row.app.slug]) {
             Button("Skip This Version") { depot.skip(row.app) }.help("Hide this update until a newer version comes out")
         }
         if case .skipped = row.state {
@@ -141,5 +162,71 @@ struct NotesView: View {
             }
         }
         .textSelection(.enabled)
+    }
+}
+
+/// A product with no build for this Mac: what it is, where it runs, and how to get it there.
+struct RemoteDetailView: View {
+    let product: Product
+    @Environment(DepotModel.self) private var depot
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        let app = product.display
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+                HStack(alignment: .top, spacing: Theme.Spacing.l) {
+                    AppIconView(app: app, size: Theme.Size.detailIcon)
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        HStack(spacing: Theme.Spacing.s) {
+                            Text(app.name).font(.title.bold())
+                            ChipView(chip: .notOnThisDevice)
+                        }
+                        Text(app.tagline).foregroundStyle(.secondary)
+                        PlatformBadges(product: product)
+                        HStack(spacing: Theme.Spacing.s) {
+                            ForEach(remoteActions(product, local: macPlatform), id: \.self) { action in
+                                switch action {
+                                case .sendToPhone:
+                                    Button("Send to phone") { depot.sendToPhone = product }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(Theme.accent)
+                                        .help("Show a QR code to install \(app.name) on your phone")
+                                case let .openOnWeb(url):
+                                    Button("Open on the web") { if let u = URL(string: url) { openURL(u) } }
+                                        .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                        .padding(.top, Theme.Spacing.s)
+                    }
+                }
+                ForEach(product.others(local: macPlatform)) { variant in
+                    VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                        Text("Available for \(platformLabel(variant.platform))").font(.title3.bold())
+                        Grid(alignment: .leading, horizontalSpacing: Theme.Spacing.l, verticalSpacing: Theme.Spacing.s) {
+                            GridRow {
+                                Text("Latest").foregroundStyle(.secondary)
+                                Text(latestText(variant))
+                            }
+                        }
+                        .font(.callout)
+                        if let notes = variant.latest?.notes, !parseReleaseNotes(notes).isEmpty {
+                            Text("What's New in \(variant.latest!.version)").font(.headline).padding(.top, Theme.Spacing.s)
+                            NotesView(items: parseReleaseNotes(notes))
+                        }
+                    }
+                }
+            }
+            .padding(Theme.Spacing.xl)
+            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .navigationTitle(app.name)
+    }
+
+    private func latestText(_ a: CatalogApp) -> String {
+        guard let l = a.latest else { return "No release yet" }
+        return [l.version, Format.date(l.publishedAt), l.size > 0 ? Format.bytes(l.size) : nil].compactMap { $0 }.joined(separator: " · ")
     }
 }

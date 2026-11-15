@@ -322,3 +322,59 @@ final class FakeInstaller: AppInstalling {
         #expect(installer.calls == ["a"])
     }
 }
+
+@MainActor
+@Suite struct SelfUpdateLastTests {
+    let tmp: TempDir
+    let installer = FakeInstaller()
+
+    init() throws { tmp = try TempDir() }
+
+    func entry(_ slug: String) -> CatalogApp {
+        CatalogApp(slug: slug, name: slug.capitalized, tagline: "", platform: "macos", appId: "com.test.\(slug)", repo: "v/\(slug)",
+                   signer: "identifier \"com.test.\(slug)\"",
+                   latest: CatalogRelease(version: "2.0.0", assetName: "a.zip", downloadUrl: "https://x/a.zip", sha256: "s", size: 10, publishedAt: "t"))
+    }
+
+    @Test func updatingAppDepotRunsTheOtherUpdatesFirst() async throws {
+        _ = try makeBundle(in: tmp.url, name: "A", bundleId: "com.test.a", version: "1.0.0")
+        _ = try makeBundle(in: tmp.url, name: "B", bundleId: "com.test.b", version: "1.0.0")
+        let c = InstallCoordinator(installer: installer, location: InstallLocation(root: tmp.url), events: nil)
+        var order: [String] = []
+        c.updatableOthers = { [entry("a"), entry("b")] }
+        c.selfUpdate = { order.append("self after \(self.installer.calls)") }
+        _ = await c.install(entry(selfSlug))
+        #expect(installer.calls == ["a", "b"])
+        #expect(order == ["self after [\"a\", \"b\"]"])
+        #expect(c.progress[selfSlug] == nil)
+    }
+
+    @Test func aWaitingSelfUpdateStaysBehindAnInstallStartedMeanwhile() async throws {
+        _ = try makeBundle(in: tmp.url, name: "A", bundleId: "com.test.a", version: "1.0.0")
+        let c = InstallCoordinator(installer: installer, location: InstallLocation(root: tmp.url), events: nil)
+        var order: [String] = []
+        c.updatableOthers = { [entry("a")] }
+        c.selfUpdate = { order.append("self after \(self.installer.calls)") }
+        async let selfRun: InstallOutcome? = c.install(entry(selfSlug))
+        async let other: InstallOutcome? = c.install(entry("c"))
+        _ = await (selfRun, other)
+        #expect(Set(installer.calls) == ["a", "c"])
+        #expect(order.count == 1)
+        #expect(order.first.map { $0.contains("\"a\"") && $0.contains("\"c\"") } == true)
+    }
+
+    @Test func selfNeverStartsWhileAnotherInstallIsBusy() async throws {
+        let c = InstallCoordinator(installer: installer, location: InstallLocation(root: tmp.url), events: nil)
+        var started = 0
+        c.selfUpdate = { started += 1 }
+        c.showForSnapshot("a", .downloading(percent: 10))
+        let waiter = Task { await c.requestSelfUpdate() }
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(started == 0)
+        #expect(c.progress[selfSlug] == .queued)
+        #expect(selfWaitingLine(progress: c.progress) == "Updating 1 other app first")
+        c.showForSnapshot("a", .done(version: "2.0.0"))
+        await waiter.value
+        #expect(started == 1)
+    }
+}

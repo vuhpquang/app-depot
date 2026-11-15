@@ -24,7 +24,7 @@ enum DebugCLI {
         }
         do {
             let (_, apps) = try await DepotAPI(version: "debug").fetchCatalog()
-            guard let app = apps.first(where: { $0.slug == slug }) else { print("no app \(slug) in the catalog"); return 1 }
+            guard let app = localApps(apps).first(where: { $0.slug == slug }) else { print("no app \(slug) in the catalog"); return 1 }
             let installer = MacInstaller(location: location, downloader: URLSessionDownloader(userAgent: "AppDepot-macOS/debug"),
                                          control: WorkspaceAppProcessControl.live)
             let outcome = await installer.install(app, interactive: false) { step in print("  \(step)") }

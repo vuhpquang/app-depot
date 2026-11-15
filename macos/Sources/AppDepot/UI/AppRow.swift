@@ -1,17 +1,30 @@
-// UI/AppRow.swift — one app in the list layout and in the grid layout, plus its context menu.
+// UI/AppRow.swift — one product in the list layout and in the grid layout, plus its context menu.
+// A product with a Mac build behaves as before (its macOS row); one without shows "Not for Mac" and
+// "Send to phone" instead of Install. Platform badges show when the filter is "All".
 import DepotCore
 import SwiftUI
 
 struct AppListRow: View {
-    let row: AppRow
+    let item: ProductRow
     @Environment(DepotModel.self) private var depot
 
     var body: some View {
-        let m = depot.card(row)
+        let m = depot.card(item)
         HStack(spacing: Theme.Spacing.m) {
-            AppIconView(app: row.app, size: Theme.Size.rowIcon)
+            AppIconView(app: item.app, size: Theme.Size.rowIcon)
             VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                Text(row.app.name).font(.headline).lineLimit(1)
+                if depot.platformFilter == .all {
+                    // The name wins: badges drop out of a row too narrow for both.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: Theme.Spacing.s - 2) {
+                            Text(item.app.name).font(.headline).lineLimit(1).fixedSize()
+                            PlatformBadges(product: item.product)
+                        }
+                        Text(item.app.name).font(.headline).lineLimit(1)
+                    }
+                } else {
+                    Text(item.app.name).font(.headline).lineLimit(1)
+                }
                 if let error = m.error {
                     Text(error).font(.callout).foregroundStyle(.red).lineLimit(2)
                 } else {
@@ -23,37 +36,54 @@ struct AppListRow: View {
             }
             .layoutPriority(1)
             Spacer(minLength: Theme.Spacing.s)
-            PrimaryActionView(row: row, model: m, compact: true)
+            Group {
+                if let row = item.row {
+                    PrimaryActionView(row: row, model: m, compact: true)
+                } else {
+                    RemoteActionView(product: item.product, compact: true)
+                }
+            }
+            .fixedSize()
         }
         .padding(.vertical, Theme.Spacing.xs)
         .contentShape(Rectangle())
-        .contextMenu { AppContextMenu(row: row) }
+        .contextMenu { ProductContextMenu(item: item) }
         .accessibilityElement(children: .contain)
     }
 
     private func subtitle(_ m: CardModel) -> String {
+        if item.app.slug == selfSlug, let waiting = selfWaitingLine(progress: depot.coordinator.progress) { return waiting }
         let v = versionLine(m)
-        return v.isEmpty ? row.app.tagline : v
+        return v.isEmpty ? item.app.tagline : v
     }
 }
 
 struct AppGridCard: View {
-    let row: AppRow
+    let item: ProductRow
     let selected: Bool
     @Environment(DepotModel.self) private var depot
 
     var body: some View {
-        let m = depot.card(row)
+        let m = depot.card(item)
         VStack(spacing: Theme.Spacing.s) {
-            AppIconView(app: row.app, size: Theme.Size.gridIcon)
-            Text(row.app.name).font(.headline).lineLimit(1)
+            AppIconView(app: item.app, size: Theme.Size.gridIcon)
+            VStack(spacing: Theme.Spacing.xs) {
+                Text(item.app.name).font(.headline).lineLimit(1)
+                if depot.platformFilter == .all { PlatformBadges(product: item.product) }
+            }
             Group {
                 if let chip = m.chip { ChipView(chip: chip) } else { Text(versionLine(m)).font(.caption).foregroundStyle(.secondary) }
             }
             .frame(height: 20)
             Spacer(minLength: 0)
-            PrimaryActionView(row: row, model: m, compact: true)
-                .frame(height: 24)
+            Group {
+                if let row = item.row {
+                    PrimaryActionView(row: row, model: m, compact: true)
+                } else {
+                    RemoteActionView(product: item.product, compact: true)
+                }
+            }
+            .frame(height: 24)
         }
         .padding(Theme.Spacing.m)
         .frame(width: Theme.Size.gridCardWidth, height: Theme.Size.gridCardHeight)
@@ -63,9 +93,31 @@ struct AppGridCard: View {
                 .strokeBorder(selected ? Theme.accent : Theme.Fill.separator, lineWidth: selected ? 2 : 1)
         }
         .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .contextMenu { AppContextMenu(row: row) }
+        .contextMenu { ProductContextMenu(item: item) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(row.app.name)
+        .accessibilityLabel(item.app.name)
+    }
+}
+
+/// The macOS row's menu, or Send to phone / Open on the web for a product that isn't for this Mac.
+struct ProductContextMenu: View {
+    let item: ProductRow
+    @Environment(DepotModel.self) private var depot
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        if let row = item.row {
+            AppContextMenu(row: row)
+        } else {
+            ForEach(remoteActions(item.product, local: macPlatform), id: \.self) { action in
+                switch action {
+                case .sendToPhone:
+                    Button("Send to Phone…") { depot.sendToPhone = item.product }
+                case let .openOnWeb(url):
+                    Button("Open on the Web") { if let u = URL(string: url) { openURL(u) } }
+                }
+            }
+        }
     }
 }
 

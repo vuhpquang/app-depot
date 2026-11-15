@@ -88,6 +88,43 @@ final class RecordingNotifier: Notifying {
         await idle.run()
         #expect(count.value == 1)
     }
+
+    @Test func otherPlatformEntriesAreNeverPlannedInstalledOrAnnounced() async throws {
+        // Same bundle id as the installed Mac app (App Depot macOS and Android share one too).
+        var phone = entry("a-android", name: "Alpha Phone")
+        phone.platform = "android"
+        phone.appId = "com.test.a"
+        phone.projectSlug = "a"
+        var mac = entry("a", name: "Alpha")
+        mac.projectSlug = "a"
+        let run = try make(apps: [phone, mac, entry("b", name: "Beta")], autoInstall: true)
+        await run.run()
+        #expect(installer.calls.sorted() == ["a", "b"])
+        #expect(!notifier.updated.map(\.0).contains("Alpha Phone"))
+        let model = run.model
+        #expect(model.allApps.count == 3, "the full catalog is kept")
+        #expect(model.rows.allSatisfy { $0.app.platform == "macos" })
+        #expect(model.updateAllApps.allSatisfy { $0.platform == "macos" })
+        #expect(model.products.count == 2)
+        model.skip(phone)
+        #expect(model.skipped["a-android"] == nil)
+        await model.uninstall(phone)
+        #expect(model.notice == nil, "nothing to uninstall for another platform's entry")
+    }
+
+    @Test func platformFilterIsPersistedAndCounted() async throws {
+        var phone = entry("w", name: "Wiki")
+        phone.platform = "android"
+        let run = try make(apps: [phone, entry("b", name: "Beta")], autoInstall: false)
+        let model = run.model
+        await model.refresh()
+        #expect(model.platformFilter == .device)
+        #expect(model.filterCounts == FilterCounts(device: 1, all: 2))
+        #expect(model.sections.all.map(\.product.key) == ["b"])
+        model.platformFilter = .all
+        #expect(defaults.string(forKey: "appdepot.ui.platformFilter") == "all")
+        #expect(model.sections.other.map(\.product.key) == ["w"])
+    }
 }
 
 /// A tiny mutable box for closures in tests.

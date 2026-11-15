@@ -12,7 +12,10 @@ import OSLog
 final class DepotModel {
     // MARK: State
 
-    private(set) var apps: [CatalogApp] = []
+    /// The full catalog, every platform (filtering happens here, never on the server).
+    private(set) var allApps: [CatalogApp] = []
+    /// The macOS entries: the only ones App Depot plans, installs, updates, skips or uninstalls.
+    var apps: [CatalogApp] { localApps(allApps) }
     /// When the shown catalog was fetched (live or cached).
     private(set) var catalogDate: Date?
     /// Set when the last refresh failed; the cached list stays on screen.
@@ -24,6 +27,10 @@ final class DepotModel {
     var search = ""
     var sort: DepotCore.SortOrder { didSet { defaults.set(sort.rawValue, forKey: Keys.sort) } }
     var layout: HomeLayout { didSet { defaults.set(layout.rawValue, forKey: Keys.layout) } }
+    var platformFilter: PlatformFilter { didSet { defaults.set(platformFilter.rawValue, forKey: Keys.platformFilter) } }
+    /// The product whose "Send to phone" sheet is showing.
+    var sendToPhone: Product?
+    /// The selected product's key (`projectSlug`, else slug).
     var selection: String?
     private(set) var skipped: [String: String] { didSet { defaults.set(formatSlugMap(skipped), forKey: Keys.skipped) } }
     /// A short message about the last action (uninstall result, open failure); cleared by the view.
@@ -51,6 +58,7 @@ final class DepotModel {
         static let sort = "appdepot.ui.sort"
         static let layout = "appdepot.ui.layout"
         static let skipped = "appdepot.skipped"
+        static let platformFilter = "appdepot.ui.platformFilter"
     }
 
     init(coordinator: InstallCoordinator, location: InstallLocation, history: HistoryStore?, control: AppController,
@@ -66,8 +74,10 @@ final class DepotModel {
         self.fetch = fetch
         sort = DepotCore.SortOrder(key: defaults.string(forKey: Keys.sort))
         layout = HomeLayout(key: defaults.string(forKey: Keys.layout))
+        platformFilter = PlatformFilter(key: defaults.string(forKey: Keys.platformFilter))
         skipped = parseSlugMap(defaults.string(forKey: Keys.skipped))
         coordinator.skipped = { [weak self] in self?.skipped ?? [:] }
+        coordinator.updatableOthers = { [weak self] in self?.updateAllApps.filter { $0.slug != selfSlug } ?? [] }
         loadCachedCatalog()
     }
 
@@ -75,7 +85,7 @@ final class DepotModel {
 
     private func loadCachedCatalog() {
         guard let catalogCache, let data = try? Data(contentsOf: catalogCache), let parsed = try? CatalogParser.parse(data) else { return }
-        apps = parsed
+        allApps = parsed
         catalogDate = (try? FileManager.default.attributesOfItem(atPath: catalogCache.path)[.modificationDate]) as? Date
         rescanInstalled()
     }
@@ -89,7 +99,7 @@ final class DepotModel {
         defer { isRefreshing = false }
         do {
             let (data, parsed) = try await fetch()
-            apps = parsed
+            allApps = parsed
             catalogDate = Date()
             refreshError = nil
             if let catalogCache {
@@ -101,7 +111,7 @@ final class DepotModel {
         } catch {
             log.error("catalog refresh failed: \(error.localizedDescription, privacy: .public)")
             if quiet { return false }
-            refreshError = apps.isEmpty ? "Couldn't load the app list. Check your connection and try again."
+            refreshError = allApps.isEmpty ? "Couldn't load the app list. Check your connection and try again."
                                         : "Couldn't refresh. Showing the list from \(catalogDate.map(Self.relative) ?? "earlier")."
             rescanInstalled()
             return false
@@ -129,7 +139,7 @@ final class DepotModel {
 
     /// Snapshot runs: show these installed versions without looking at the disk.
     func applySnapshot(apps: [CatalogApp], installed: [String: String], skipped: [String: String], refreshError: String?) {
-        self.apps = apps
+        allApps = apps
         installedVersions = installed
         installedURLs = Dictionary(uniqueKeysWithValues: installed.keys.map { ($0, URL(fileURLWithPath: "/Applications/\($0).app")) })
         self.skipped = skipped
@@ -147,9 +157,21 @@ final class DepotModel {
         apps.map { AppRow(app: $0, state: state(of: $0), launchable: installedURLs[$0.slug] != nil && $0.slug != selfSlug) }
     }
 
-    var visibleRows: [AppRow] { sortRows(rows.filter { matchesQuery($0.app, search) }, sort) }
-
     func row(_ slug: String) -> AppRow? { rows.first { $0.app.slug == slug } }
+
+    /// Every product of the catalog, each with its planned macOS row (nil = not for this Mac).
+    var products: [ProductRow] {
+        productRows(allApps, local: macPlatform) { app in
+            AppRow(app: app, state: state(of: app), launchable: installedURLs[app.slug] != nil && app.slug != selfSlug)
+        }
+    }
+
+    var filterCounts: FilterCounts { DepotCore.filterCounts(products) }
+
+    /// What Home lists: this Mac's products, then (filter All) the rest under "Other platforms".
+    var sections: HomeSections { homeSections(products, filter: platformFilter, sort: sort, query: search) }
+
+    func product(_ key: String) -> ProductRow? { products.first { $0.product.key == key } }
 
     var updateAllApps: [CatalogApp] {
         let slugs = updateAllSlugs(rows)
@@ -163,8 +185,11 @@ final class DepotModel {
         cardModel(row.state, progress: coordinator.progress[row.app.slug], canLaunch: row.launchable, latest: row.app.latest)
     }
 
+    /// A product row's card: the macOS row's (with install progress), else "Not for Mac".
+    func card(_ item: ProductRow) -> CardModel { item.row.map(card) ?? item.model }
+
     var statusLine: String {
-        if apps.isEmpty { return isRefreshing ? "Loading apps…" : "No apps yet" }
+        if allApps.isEmpty { return isRefreshing ? "Loading apps…" : "No apps yet" }
         switch updateCount {
         case 0: return "No updates waiting"
         case 1: return "1 update available"
@@ -175,6 +200,7 @@ final class DepotModel {
     // MARK: Actions
 
     func install(_ app: CatalogApp) {
+        guard app.platform == macPlatform else { return }
         Task {
             await coordinator.install(app)
             rescanInstalled()
@@ -191,7 +217,7 @@ final class DepotModel {
     }
 
     func open(_ app: CatalogApp) {
-        guard let url = installedURLs[app.slug] else { return }
+        guard app.platform == macPlatform, let url = installedURLs[app.slug] else { return }
         let config = NSWorkspace.OpenConfiguration()
         NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
             if let error { Task { @MainActor in self.notice = "Couldn't open \(app.name): \(error.localizedDescription)" } }
@@ -200,7 +226,7 @@ final class DepotModel {
     }
 
     func skip(_ app: CatalogApp) {
-        guard case let .updateAvailable(_, latest) = state(of: app) else { return }
+        guard app.platform == macPlatform, case let .updateAvailable(_, latest) = state(of: app) else { return }
         skipped[app.slug] = latest.version
     }
 
@@ -208,7 +234,7 @@ final class DepotModel {
 
     /// Moves the installed copy to the Trash. Quits only the copy at that path first; refuses if it won't quit.
     func uninstall(_ app: CatalogApp) async {
-        guard app.slug != selfSlug, let url = installedURLs[app.slug], location.allows(url) else { return }
+        guard app.platform == macPlatform, app.slug != selfSlug, let url = installedURLs[app.slug], location.allows(url) else { return }
         if control.isRunning(bundleURL: url) {
             control.terminate(bundleURL: url)
             let deadline = ContinuousClock.now + .seconds(10)

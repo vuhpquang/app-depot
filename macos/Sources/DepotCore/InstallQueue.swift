@@ -64,3 +64,30 @@ public func runInstallQueue(_ apps: [CatalogApp], install: (CatalogApp) async ->
     }
     return results
 }
+
+// MARK: App Depot updates itself last
+// It is the app that updates the others: replacing it mid-queue would stop the queue, so it only ever
+// starts once nothing else is queued, downloading, checking or installing.
+
+/// Updating App Depot itself: every other available update first (catalog order, skipped ones are already
+/// left out of `updatable`), then App Depot.
+public func planSelfUpdate(updatable: [String], selfSlug me: String = selfSlug) -> [String] {
+    var seen = Set<String>()
+    return updatable.filter { $0 != me && seen.insert($0).inserted } + [me]
+}
+
+/// The self-update may be handed to app-shell's Updater only when no other app is busy.
+public func selfMayStart(progress: [String: InstallProgress], selfSlug me: String = selfSlug) -> Bool {
+    !progress.contains { $0.key != me && isBusy($0.value) }
+}
+
+/// "Updating 2 other apps first" while App Depot's own update waits for the queue; nil otherwise.
+public func selfWaitingLine(progress: [String: InstallProgress], selfSlug me: String = selfSlug) -> String? {
+    guard isBusy(progress[me]) else { return nil }
+    let n = progress.filter { $0.key != me && isBusy($0.value) }.count
+    switch n {
+    case 0: return nil
+    case 1: return "Updating 1 other app first"
+    default: return "Updating \(n) other apps first"
+    }
+}

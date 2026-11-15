@@ -23,6 +23,7 @@ extension CardChip {
         case .noRelease: return "No release yet"
         case .notInstallable: return "Not available here"
         case .selfUpdates: return "Updates itself"
+        case .notOnThisDevice: return "Not for Mac"
         }
     }
 
@@ -81,10 +82,10 @@ struct PrimaryActionView: View {
                 } else {
                     ProgressView().controlSize(.small)
                 }
-                if !compact { Text(activity.title).font(.callout).foregroundStyle(.secondary).monospacedDigit() }
+                if !compact { Text(activityTitle(activity)).font(.callout).foregroundStyle(.secondary).monospacedDigit() }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(activity.title)
+            .accessibilityLabel(activityTitle(activity))
         } else if let action = model.action {
             Button {
                 switch action {
@@ -101,6 +102,12 @@ struct PrimaryActionView: View {
         }
     }
 
+    /// App Depot waiting for the other updates says so instead of "Waiting…".
+    private func activityTitle(_ a: CardActivity) -> String {
+        if row.app.slug == selfSlug, let waiting = selfWaitingLine(progress: depot.coordinator.progress) { return waiting }
+        return a.title
+    }
+
     private func title(_ a: CardAction) -> String {
         switch a {
         case .install: return "Install"
@@ -113,6 +120,48 @@ struct PrimaryActionView: View {
         switch a {
         case .install, .update: return downloadBytes(row).map { "Download \(Format.bytes($0))" } ?? ""
         case .open: return "Open \(row.app.name)"
+        }
+    }
+}
+
+/// Capsule labels for the platforms a product ships on, this Mac's first ("macOS", "Android").
+struct PlatformBadges: View {
+    let product: Product
+
+    var body: some View {
+        HStack(spacing: Theme.Spacing.xs) {
+            ForEach(product.platforms(local: macPlatform), id: \.self) { platform in
+                Text(platformLabel(platform))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, Theme.Spacing.s - 2)
+                    .padding(.vertical, 1)
+                    .overlay(Capsule().strokeBorder(Theme.Fill.separator))
+                    .fixedSize()
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Available for " + product.platforms(local: macPlatform).map(platformLabel).joined(separator: " and "))
+    }
+}
+
+/// The action of a product with no Mac build: "Send to phone" when there is an Android download.
+struct RemoteActionView: View {
+    let product: Product
+    var compact = false
+    @Environment(DepotModel.self) private var depot
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        if case .sendToPhone = remoteActions(product, local: macPlatform).first {
+            Button("Send to phone") { depot.sendToPhone = product }
+                .buttonStyle(.bordered)
+                .tint(Theme.accent)
+                .controlSize(compact ? .small : .regular)
+                .help("Show a QR code to install \(product.display.name) on your phone")
+        } else if !compact, case let .openOnWeb(url)? = remoteActions(product, local: macPlatform).first, let u = URL(string: url) {
+            Button("Open on the web") { openURL(u) }
+                .buttonStyle(.bordered)
         }
     }
 }
