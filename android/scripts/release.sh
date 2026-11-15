@@ -32,14 +32,18 @@ APKSIGNER="$(ls -d "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -
 
 step "Preflight"
 cd "$REPO_ROOT"
-[[ "$(git branch --show-current)" == "$BRANCH" ]] || die "release from '$BRANCH'"
+# Branch: `main`, or any branch whose HEAD is exactly origin/main (a worktree branch while main is checked out elsewhere).
+CURRENT_BRANCH="$(git branch --show-current)"
 [[ -z "$(git status --porcelain)" ]] || die "working tree not clean"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && die "tag $TAG already exists"
 if [[ "$PUBLISH" != "0" ]]; then
   gh auth status >/dev/null 2>&1 || die "gh is not logged in"
   git fetch -q origin "$BRANCH" --tags
   [[ "$(git rev-parse HEAD)" == "$(git rev-parse "origin/$BRANCH")" ]] \
-    || die "$BRANCH is not in sync with origin/$BRANCH (pull or push first)"
+    || die "HEAD is not origin/$BRANCH (on '$CURRENT_BRANCH'; pull, push or rebase first)"
+else
+  [[ "$CURRENT_BRANCH" == "$BRANCH" || "$(git rev-parse HEAD)" == "$(git rev-parse "origin/$BRANCH" 2>/dev/null)" ]] \
+    || die "release from '$BRANCH' or a branch at origin/$BRANCH"
 fi
 
 CURRENT="$(tr -d '[:space:]' < "$ANDROID_DIR/VERSION")"
@@ -84,7 +88,7 @@ git tag -a "$TAG" -m "App Depot (Android) $VERSION"
 
 if [[ "$PUBLISH" != "0" ]]; then
   step "Pushing and creating GitHub release $TAG"
-  git push -q origin "$BRANCH" "$TAG"
+  git push -q origin "HEAD:$BRANCH" "$TAG"
   gh release create "$TAG" "$APK_OUT" -R "$REPO" --title "App Depot (Android) $VERSION" \
     --notes-file "$NOTES_FILE" --latest=false
   echo "    https://github.com/$REPO/releases/tag/$TAG"
