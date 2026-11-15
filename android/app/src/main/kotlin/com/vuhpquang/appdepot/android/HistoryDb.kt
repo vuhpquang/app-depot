@@ -9,6 +9,8 @@ import com.vuhpquang.appdepot.core.toWireJson
 import com.vuhpquang.appdepot.core.trimOutbox
 import java.time.Instant
 
+const val HISTORY_CAP = 2000
+
 data class HistoryRow(
     val id: Long,
     val type: String,
@@ -25,7 +27,6 @@ class HistoryDb(context: Context) : SQLiteOpenHelper(context, "history.db", null
             "CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL, app_slug TEXT, " +
                 "from_version TEXT, to_version TEXT, message TEXT, at INTEGER NOT NULL)",
         )
-        db.execSQL("CREATE INDEX history_at ON history(at)")
         db.execSQL("CREATE TABLE outbox(id INTEGER PRIMARY KEY AUTOINCREMENT, json TEXT NOT NULL, created_at INTEGER NOT NULL)")
     }
 
@@ -47,6 +48,7 @@ class HistoryDb(context: Context) : SQLiteOpenHelper(context, "history.db", null
                 "outbox", null,
                 ContentValues().apply { put("json", e.toWireJson()); put("created_at", e.at.toEpochMilli()) },
             )
+            db.execSQL("DELETE FROM history WHERE id <= (SELECT MAX(id) FROM history) - $HISTORY_CAP")
             val drop = trimOutbox(outboxCount(db))
             if (drop > 0) {
                 db.execSQL("DELETE FROM outbox WHERE id IN (SELECT id FROM outbox ORDER BY id LIMIT $drop)")

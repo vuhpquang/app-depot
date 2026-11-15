@@ -17,9 +17,10 @@ import kotlinx.coroutines.launch
 class AppDepotApplication : Application() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val versionName: String by lazy {
-        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "0"
+    private val versionNameOrNull: String? by lazy {
+        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
     }
+    private val versionName: String get() = versionNameOrNull ?: "0"
 
     val api: DepotApi by lazy { DepotApi(DEPOT_BASE_URL, versionName) }
     val pairing: Pairing by lazy { Pairing(this, api, versionName) }
@@ -34,11 +35,14 @@ class AppDepotApplication : Application() {
         scope.launch {
             // The process dies during a self-update, so the coordinator can't record it: detect it here.
             val state = getSharedPreferences("appdepot.state", MODE_PRIVATE)
-            val last = state.getString("lastVersionName", null)
-            if (last != null && last != versionName) {
-                history.record(DepotEvent("self_update", appSlug = SELF_SLUG, fromVersion = last, toVersion = versionName))
+            val current = versionNameOrNull
+            if (current != null) {
+                val last = state.getString("lastVersionName", null)
+                if (last != null && last != current) {
+                    history.record(DepotEvent("self_update", appSlug = SELF_SLUG, fromVersion = last, toVersion = current))
+                }
+                state.edit().putString("lastVersionName", current).apply()
             }
-            state.edit().putString("lastVersionName", versionName).apply()
             history.record(DepotEvent("depot_started"))
         }
     }

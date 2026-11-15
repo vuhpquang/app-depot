@@ -1,6 +1,8 @@
 package com.vuhpquang.appdepot.core
 
 import java.time.Instant
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,6 +35,7 @@ class EventBatchTest {
 
     @Test fun `wire json truncates long message to 2000`() {
         val json = DepotEvent("install_failed", appSlug = "x", message = "a".repeat(3000)).toWireJson()
-        assertTrue(json.length < 2300)
+        val decoded = kotlinx.serialization.json.Json.parseToJsonElement(json).jsonObject["message"]!!.jsonPrimitive.content
+        assertEquals(2000, decoded.length)
     }
 }

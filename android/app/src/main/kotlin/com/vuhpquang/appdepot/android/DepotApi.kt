@@ -4,6 +4,7 @@ import com.vuhpquang.appdepot.core.EventsOutcome
 import com.vuhpquang.appdepot.core.PairResult
 import com.vuhpquang.appdepot.core.parseEventsStatus
 import com.vuhpquang.appdepot.core.parsePairResponse
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
@@ -43,6 +44,8 @@ class DepotApi(private val baseUrl: String, private val versionName: String) {
         }.toString()
         val r = post("/api/depot/devices", body, null)
         parsePairResponse(r.status, r.body)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         PairResult.Failed("Could not reach the server. Check your connection and try again.")
     }
@@ -50,6 +53,8 @@ class DepotApi(private val baseUrl: String, private val versionName: String) {
     /** Network errors surface as [EventsOutcome.Retry]. */
     suspend fun postEvents(token: String, body: String): EventsOutcome = try {
         parseEventsStatus(post("/api/depot/events", body, token).status)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         EventsOutcome.Retry
     }

@@ -10,8 +10,10 @@ class Pairing(context: Context, private val api: DepotApi, private val depotVers
     private val prefs = context.getSharedPreferences("appdepot.pairing", Context.MODE_PRIVATE)
 
     val deviceId: String
-        get() = prefs.getString("deviceId", null) ?: UUID.randomUUID().toString().also {
-            prefs.edit().putString("deviceId", it).apply()
+        get() = synchronized(this) {
+            prefs.getString("deviceId", null) ?: UUID.randomUUID().toString().also {
+                prefs.edit().putString("deviceId", it).commit()
+            }
         }
 
     val token: String? get() = prefs.getString("token", null)
