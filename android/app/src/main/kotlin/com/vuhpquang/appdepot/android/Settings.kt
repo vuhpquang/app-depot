@@ -33,9 +33,19 @@ class Settings(context: Context) {
 
     /** Background checks: slug -> latest version the user was already told about (survives process death). */
     var backgroundNotified: Map<String, String>
-        get() = prefs.getString(KEY_BG_NOTIFIED, null)?.lineSequence()
-            ?.mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }?.toMap() ?: emptyMap()
-        set(v) = prefs.edit().putString(KEY_BG_NOTIFIED, v.entries.joinToString("\n") { "${it.key}=${it.value}" }).apply()
+        get() = readMap(KEY_BG_NOTIFIED)
+        set(v) = writeMap(KEY_BG_NOTIFIED, v)
+
+    /** Background installs that failed or needed the user: slug -> version; not retried until a newer one. */
+    var backgroundFailed: Map<String, String>
+        get() = readMap(KEY_BG_FAILED)
+        set(v) = writeMap(KEY_BG_FAILED, v)
+
+    private fun readMap(key: String): Map<String, String> = prefs.getString(key, null)?.lineSequence()
+        ?.mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }?.toMap() ?: emptyMap()
+
+    private fun writeMap(key: String, v: Map<String, String>) =
+        prefs.edit().putString(key, v.entries.joinToString("\n") { "${it.key}=${it.value}" }).apply()
 
     /** Debug builds only: catalog + device API server; null = [DEPOT_BASE_URL]. */
     var serverUrl: String?
@@ -49,6 +59,7 @@ class Settings(context: Context) {
         const val KEY_LAST_SEEN = "appdepot.whatsNew.lastSeenVersion"
         const val KEY_NOTIF_ASKED = "appdepot.notifications.asked"
         const val KEY_BG_NOTIFIED = "appdepot.background.notified"
+        const val KEY_BG_FAILED = "appdepot.background.failed"
         const val KEY_SERVER_URL = "appdepot.debug.serverUrl"
     }
 }

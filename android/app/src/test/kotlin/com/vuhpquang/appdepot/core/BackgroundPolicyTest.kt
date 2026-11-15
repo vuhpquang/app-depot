@@ -66,3 +66,31 @@ class BackgroundPolicyTest {
         assertTrue(d.notified.isEmpty())
     }
 }
+
+class PlanBackgroundTest {
+    private fun rel(v: String) = CatalogRelease(version = v, assetName = "a.apk", downloadUrl = "u", sha256 = "s", size = 1, publishedAt = "t")
+    private fun upd(v: String) = AppState.UpdateAvailable("0.1", rel(v))
+
+    @Test fun checkErrorMeansEmptyNextAndNothingHappens() {
+        // A failed catalog fetch yields no states: nothing to announce or install.
+        val p = planBackground(mapOf("a" to "2"), emptyMap(), emptyMap(), autoInstall = true, silentCapable = setOf("a"))
+        assertTrue(p.announce.isEmpty()); assertTrue(p.install.isEmpty())
+    }
+
+    @Test fun failedVersionIsNotRetriedUntilNewer() {
+        val failed = mapOf("a" to "2")
+        assertTrue(planBackground(emptyMap(), failed, mapOf("a" to upd("2")), true, setOf("a")).install.isEmpty())
+        assertEquals(listOf("a"), planBackground(emptyMap(), failed, mapOf("a" to upd("3")), true, setOf("a")).install)
+    }
+
+    @Test fun busySlugIsSkipped() {
+        val p = planBackground(emptyMap(), emptyMap(), mapOf("a" to upd("2"), "b" to upd("2")), true, setOf("a", "b"), busy = setOf("a"))
+        assertEquals(listOf("b"), p.install)
+    }
+
+    @Test fun nonSilentAutoInstallAnnouncesOnce() {
+        val next = mapOf("a" to upd("2"))
+        assertEquals(listOf("a"), planBackground(emptyMap(), emptyMap(), next, true, emptySet()).announce)
+        assertTrue(planBackground(mapOf("a" to "2"), emptyMap(), next, true, emptySet()).announce.isEmpty())
+    }
+}

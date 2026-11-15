@@ -2,6 +2,7 @@ package com.vuhpquang.appdepot
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -79,7 +80,7 @@ class MainActivity : ComponentActivity() {
 
     private fun askForNotificationsOnce() {
         val settings = (application as AppDepotApplication).settings
-        if (settings.notificationsAsked) return
+        if (Build.VERSION.SDK_INT < 33 || settings.notificationsAsked) return
         settings.notificationsAsked = true
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)

@@ -9,7 +9,7 @@ import com.vuhpquang.appdepot.core.AppState
 import com.vuhpquang.appdepot.core.CatalogApp
 import com.vuhpquang.appdepot.core.InstallProgress
 import com.vuhpquang.appdepot.core.SELF_SLUG
-import com.vuhpquang.appdepot.core.decide
+import com.vuhpquang.appdepot.core.planBackground
 import com.vuhpquang.appdepot.core.planFor
 import kotlinx.coroutines.CancellationException
 
@@ -52,34 +52,51 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         app.uploader.flush()
 
         val told = settings.backgroundNotified
-        val prev = next.filter { (slug, s) -> (s as? AppState.UpdateAvailable)?.latest?.version == told[slug] }
-        val decision = decide(prev, next, settings.autoInstall)
+        val failed = settings.backgroundFailed
         val bySlug = apps.associateBy { it.slug }
-        val announce = decision.notifySlugs.toMutableList()
-        val finish = mutableListOf<String>()
+        val canInstall = app.packageManager.canRequestPackageInstalls()
+        val silentCapable = if (settings.autoInstall && canInstall) {
+            next.filterValues { it is AppState.UpdateAvailable }.keys.filter { installerIsUs(app, bySlug.getValue(it)) }.toSet()
+        } else emptySet()
+        val busy = app.coordinator.progress.value.keys
+        val plan = planBackground(told, failed, next, settings.autoInstall, silentCapable, busy)
 
-        if (decision.installSlugs.isNotEmpty()) {
-            val canInstall = app.packageManager.canRequestPackageInstalls()
-            val (silent, manual) = decision.installSlugs.partition { canInstall && installerIsUs(app, bySlug.getValue(it)) }
-            announce += manual.filter { it !in prev } // already-told ones don't repeat every 6 h
-            if (silent.isNotEmpty()) installSilently(app, silent.map { bySlug.getValue(it) }, finish)
+        val newFailed = failed.toMutableMap()
+        val finish = mutableListOf<String>()
+        if (plan.install.isNotEmpty()) {
+            installSilently(app, plan.install.map { bySlug.getValue(it) }, newFailed, finish, next)
         }
 
-        Notifications.updatesAvailable(app, announce.map { bySlug.getValue(it).name })
-        Notifications.finishUpdating(app, finish)
-        settings.backgroundNotified = decision.notified
+        val posted = Notifications.updatesAvailable(app, plan.announce.map { bySlug.getValue(it).name })
+        Notifications.finishUpdating(app, finish.map { bySlug.getValue(it).name })
+        // Only advance "told" when the user could actually be told; otherwise try again next run.
+        val saveTold = plan.notified.toMutableMap()
+        if (!posted) plan.announce.forEach { slug -> told[slug]?.let { saveTold[slug] = it } ?: saveTold.remove(slug) }
+        settings.backgroundNotified = saveTold
+        // Forget failures once the app moved on to another version or is no longer updatable.
+        settings.backgroundFailed = newFailed.filter { (slug, v) -> (next[slug] as? AppState.UpdateAvailable)?.latest?.version == v }
     }
 
-    private suspend fun installSilently(app: AppDepotApplication, apps: List<CatalogApp>, finish: MutableList<String>) {
+    private suspend fun installSilently(
+        app: AppDepotApplication, apps: List<CatalogApp>, failed: MutableMap<String, String>,
+        finish: MutableList<String>, next: Map<String, AppState>,
+    ) {
         app.coordinator.updateAll(apps)
         val progress = app.coordinator.progress.value
         for (a in apps) {
+            val version = (next[a.slug] as? AppState.UpdateAvailable)?.latest?.version
             when (val p = progress[a.slug]) {
-                is InstallProgress.Done -> Notifications.updated(app, a.slug, a.name, p.version)
-                InstallProgress.NeedsUserAction, InstallProgress.NeedsPermission -> finish += a.name
-                else -> {} // Failed is already in History; the user sees it next time they open the app
+                is InstallProgress.Done -> {
+                    Notifications.updated(app, a.slug, a.name, p.version)
+                    app.coordinator.clear(a.slug) // only finished ones; Failed / NeedsUserAction stay visible in the app
+                }
+                InstallProgress.NeedsUserAction, InstallProgress.NeedsPermission -> {
+                    if (version != null) failed[a.slug] = version
+                    finish += a.slug
+                }
+                is InstallProgress.Failed -> if (version != null) failed[a.slug] = version
+                else -> {}
             }
-            if (progress[a.slug] != null) app.coordinator.clear(a.slug)
         }
     }
 

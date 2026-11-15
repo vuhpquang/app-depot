@@ -34,9 +34,9 @@ object Notifications {
     )
 
     @SuppressLint("MissingPermission") // areNotificationsEnabled() covers the runtime permission
-    private fun post(context: Context, id: Int, title: String, text: String) {
+    private fun post(context: Context, id: Int, title: String, text: String): Boolean {
         val nm = NotificationManagerCompat.from(context)
-        if (!nm.areNotificationsEnabled()) return
+        if (!nm.areNotificationsEnabled()) return false
         ensureChannel(context)
         nm.notify(
             id,
@@ -50,12 +50,13 @@ object Notifications {
                 .setOnlyAlertOnce(true)
                 .build(),
         )
+        return true
     }
 
     /** "3 app updates" with the names. Replaces the previous one. */
-    fun updatesAvailable(context: Context, names: List<String>) {
-        if (names.isEmpty()) return
-        post(context, ID_AVAILABLE, context.resources.getQuantityString(R.plurals.notif_updates_title, names.size, names.size), names.joinToString(", "))
+    fun updatesAvailable(context: Context, names: List<String>): Boolean {
+        if (names.isEmpty()) return true
+        return post(context, ID_AVAILABLE, context.resources.getQuantityString(R.plurals.notif_updates_title, names.size, names.size), names.joinToString(", "))
     }
 
     /** "Updated ZenTask to 0.15.2". One per app. */
@@ -63,8 +64,8 @@ object Notifications {
         post(context, ID_UPDATED_BASE + (slug.hashCode() and 0xFFF), context.getString(R.string.notif_updated_title, name, version), "")
 
     /** Installs that need the user: "Tap to finish updating". */
-    fun finishUpdating(context: Context, names: List<String>) {
-        if (names.isEmpty()) return
-        post(context, ID_FINISH, context.getString(R.string.notif_finish_title), context.getString(R.string.notif_finish_text, names.joinToString(", ")))
+    fun finishUpdating(context: Context, names: List<String>): Boolean {
+        if (names.isEmpty()) return true
+        return post(context, ID_FINISH, context.getString(R.string.notif_finish_title), context.getString(R.string.notif_finish_text, names.joinToString(", ")))
     }
 }
