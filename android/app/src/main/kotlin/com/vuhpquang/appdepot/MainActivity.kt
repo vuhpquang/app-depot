@@ -4,36 +4,73 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.vuhpquang.appdepot.ui.AppDepotViewModel
+import com.vuhpquang.appdepot.ui.AppDetailScreen
+import com.vuhpquang.appdepot.ui.HistoryScreen
+import com.vuhpquang.appdepot.ui.HomeScreen
+import com.vuhpquang.appdepot.ui.ReleaseNotes
+import com.vuhpquang.appdepot.ui.SettingsScreen
 import com.vuhpquang.appdepot.ui.theme.AppDepotTheme
-import com.vuhpquang.appdepot.ui.theme.DepotTokens
 
 class MainActivity : ComponentActivity() {
+    private val vm: AppDepotViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             AppDepotTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    HomePlaceholder()
+                    val nav = rememberNavController()
+                    NavHost(nav, startDestination = "home") {
+                        composable("home") {
+                            HomeScreen(
+                                vm,
+                                onOpenApp = { nav.navigate("app/$it") },
+                                onSettings = { nav.navigate("settings") },
+                                onHistory = { nav.navigate("history") },
+                            )
+                        }
+                        composable("app/{slug}", arguments = listOf(navArgument("slug") { type = NavType.StringType })) { entry ->
+                            AppDetailScreen(vm, entry.arguments?.getString("slug").orEmpty(), onBack = { nav.popBackStack() })
+                        }
+                        composable("history") { HistoryScreen(vm, onBack = { nav.popBackStack() }) }
+                        composable("settings") { SettingsScreen(vm, onBack = { nav.popBackStack() }) }
+                    }
+                    val whatsNew by vm.whatsNew.collectAsStateWithLifecycle()
+                    whatsNew?.let { w ->
+                        AlertDialog(
+                            onDismissRequest = vm::dismissWhatsNew,
+                            title = { Text(stringResource(R.string.whats_new_title, w.version)) },
+                            text = { ReleaseNotes(w.notes, Modifier.verticalScroll(rememberScrollState())) },
+                            confirmButton = { TextButton(vm::dismissWhatsNew) { Text(stringResource(R.string.action_ok)) } },
+                        )
+                    }
                 }
             }
         }
     }
-}
 
-@Composable
-private fun HomePlaceholder() {
-    Box(Modifier.fillMaxSize().padding(DepotTokens.SpaceMd), contentAlignment = Alignment.Center) {
-        Text(stringResource(R.string.home_placeholder), style = MaterialTheme.typography.titleMedium)
+    override fun onResume() {
+        super.onResume()
+        vm.onResume()
     }
 }

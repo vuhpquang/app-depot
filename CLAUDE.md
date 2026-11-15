@@ -12,3 +12,7 @@ portfolio). Phase 2 = Android app in `android/`; phase 3 = macOS app (SwiftUI).
 - Design tokens: `ui/theme/Theme.kt` (depot green `#2E7D5B` / `#6FCF9F`, dynamic colour off).
 - Tags `android-vX.Y.Z`, GitHub releases not marked Latest, asset `AppDepot-X.Y.Z-android.apk`.
 - Author/About strings follow the hub's `.claude/rules/app-shell.md`.
+- UI: `ui/` (Compose + navigation-compose; `AppDepotViewModel` is the one state holder). Card states are a
+  pure mapping in `ui/HomeState.kt` (`cardModel`), tested in `HomeStateTest`. Settings prefs in `android/Settings.kt`.
+- Debug-only update testing: `adb shell "run-as com.vuhpquang.appdepot.dev sh -c 'echo zentask-android=0.0.1 > files/pretend.txt'"`
+  makes an installed app look outdated (`slug=version` lines; ignored in release builds). Remove the file afterwards.
