@@ -45,9 +45,9 @@
 ### Task 2: macOS package scaffold, signing, icon, empty app
 
 **Files (projects/app-depot/macos):** `Package.swift` (targets `DepotCore` library, `AppDepot` executable, `DepotCoreTests`, `AppDepotTests`), `Vendor/app-shell` submodule (`git -C projects/app-depot submodule add https://github.com/vuhpquang/app-shell.git macos/Vendor/app-shell`, checkout tag `v0.2.0`), `Sources/AppDepot/App/AppDepotApp.swift` (NSApplication + SwiftUI scenes: main window, `MenuBarExtra`), `Sources/AppDepot/App/AppShell+AppDepot.swift` (`AppIdentity.appDepot`: name, tagline "Install and update my apps in one place", repo `vuhpquang/app-depot`, firstYear 2026, accent, credits, What's New `.automatic`), `Sources/AppDepot/DesignSystem/Theme.swift`, `Sources/AppDepot/Resources/Info.plist` (LSUIElement false, `NSHumanReadableCopyright` `© 2026 Ha Phung Quang Vu`), `scripts/make-icon.swift`, `scripts/make-signing-identity.sh`, `build.sh` (universal release build, assemble `.app`, sign with identity or ad-hoc, `codesign --verify --deep --strict`, zip `build/AppDepot-X.Y.Z-macos.zip`), `.gitignore` additions, `macos/README.md`; app-depot `CLAUDE.md` macOS section.
-- [ ] Test: `DepotCoreTests` smoke (`Version.compare("0.15.10","0.15.2") > 0` using a `DepotCore.Versions` helper).
-- [ ] Run `scripts/make-signing-identity.sh` once (if the keychain asks for permission and blocks, report it; build.sh falls back to ad-hoc). `swift build && swift test && ./build.sh` succeed; `codesign -dv` shows the identity.
-- [ ] Commit `chore: scaffold App Depot macOS app`, push; hub pointer bump.
+- [x] Test: `DepotCoreTests` smoke (`Version.compare("0.15.10","0.15.2") > 0` using a `DepotCore.Versions` helper).
+- [x] Run `scripts/make-signing-identity.sh` once (if the keychain asks for permission and blocks, report it; build.sh falls back to ad-hoc). `swift build && swift test && ./build.sh` succeed; `codesign -dv` shows the identity.
+- [x] Commit `chore: scaffold App Depot macOS app`, push; hub pointer bump.
 
 ### Task 3: DepotCore — catalog, plan, verify rules, events, background policy (pure)
 

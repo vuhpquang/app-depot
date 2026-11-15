@@ -1,0 +1,3 @@
+[submodule "macos/Vendor/app-shell"]
+	path = macos/Vendor/app-shell
+	url = https://github.com/vuhpquang/app-shell.git
