@@ -52,7 +52,7 @@
 ### Task 3: DepotCore — catalog, plan, verify rules, events, background policy (pure)
 
 **Files:** `Sources/DepotCore/{Catalog.swift, CatalogParser.swift, Versions.swift, AppPlan.swift, InstallQueue.swift, DepotEvent.swift, EventBatch.swift, PairingResponse.swift, BackgroundPolicy.swift, ReleaseNotes.swift}` mirroring the Android `core` package (same names, same rules, Swift idioms: `enum AppState`, `Codable`), tests for each mirroring the Android tests (`android/app/src/test/...`). Add `ReplaceGuard`: `func canInstall(_ app: CatalogApp, state: AppState) -> Bool` (false for selfUpdates/none/LocalBuild/NoRelease/UpToDate).
-- [ ] Port the Android test cases first (they define behaviour), run → fail; implement → pass. Commit `feat: DepotCore catalog, plan, events and background policy`, push.
+- [x] Port the Android test cases first (they define behaviour), run → fail; implement → pass. Commit `feat: DepotCore catalog, plan, events and background policy`, push.
 
 ### Task 4: Installing on macOS
 
