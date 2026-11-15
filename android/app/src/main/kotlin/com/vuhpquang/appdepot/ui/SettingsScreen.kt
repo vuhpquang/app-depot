@@ -41,12 +41,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -226,6 +228,7 @@ private fun AboutBlock(vm: AppDepotViewModel, home: HomeUi) {
             Text(stringResource(R.string.no_whats_new), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         HorizontalDivider(Modifier.padding(vertical = DepotTokens.SpaceSm), color = MaterialTheme.colorScheme.outlineVariant)
+        Image(painterResource(R.drawable.author_logo), contentDescription = null, modifier = Modifier.size(32.dp))
         Text(stringResource(R.string.made_by), style = MaterialTheme.typography.bodyMedium)
         // Author links on one line (each carries the dot before it, so a wrap never leaves a dangling dot);
         // the project's source on its own line.
