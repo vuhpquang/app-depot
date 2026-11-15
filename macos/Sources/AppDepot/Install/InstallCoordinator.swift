@@ -26,6 +26,9 @@ final class InstallCoordinator {
         self.events = events
     }
 
+    /// Snapshot runs only: show a state without installing anything.
+    func showForSnapshot(_ slug: String, _ p: InstallProgress) { progress[slug] = p }
+
     /// Forget a finished / failed state once it has been shown.
     func clear(_ slug: String) {
         if !isBusy(progress[slug]) { progress[slug] = nil }

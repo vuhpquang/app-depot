@@ -6,14 +6,18 @@ import AppShellCore
 import UpdaterKit
 
 extension AppIdentity {
-    static let appDepot = AppIdentity(
-        name: "App Depot",
-        tagline: "Install and update my apps in one place",
-        repo: "vuhpquang/app-depot",
-        firstYear: 2026,
-        accent: Theme.accent,
-        whatsNew: .automatic
-    )
+    static let appDepot: AppIdentity = {
+        var app = AppIdentity(
+            name: "App Depot",
+            tagline: "Install and update my apps in one place",
+            repo: "vuhpquang/app-depot",
+            firstYear: 2026,
+            accent: Theme.accent,
+            whatsNew: .automatic
+        )
+        app.tagPrefix = "macos-v"   // one repo, two platforms: tags are macos-vX.Y.Z / android-vX.Y.Z
+        return app
+    }()
 }
 
 /// Where App Depot keeps its settings. Debug builds use their own domain so a dev run never changes the
@@ -44,10 +48,15 @@ extension Updater {
     @MainActor static let shared: Updater = {
         let updater = Updater(app: .appDepot, matcher: .zip(prefix: "AppDepot-"),
                               settings: UserDefaultsUpdateSettings(defaults: DepotDefaults.store),
-                              transport: CatalogTransport(catalogURL: DepotEndpoints.catalog, slug: DepotEndpoints.selfSlug))
+                              transport: CatalogTransport.appDepot)
         updater.unreachableMessage = "Couldn't reach vuhpquang.com. Check your connection and try again"
         return updater
     }()
+}
+
+extension CatalogTransport {
+    /// Where App Depot's own release (and its notes) come from.
+    static let appDepot = CatalogTransport(catalogURL: DepotEndpoints.catalog, slug: DepotEndpoints.selfSlug)
 }
 
 extension WhatsNewTracker {

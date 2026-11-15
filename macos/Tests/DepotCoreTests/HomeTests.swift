@@ -163,4 +163,9 @@ private func row(_ a: CatalogApp, _ s: AppState, launchable: Bool = true) -> App
         #expect(parseReleaseNotes("\r\n## H\r\n\r\n* one\r\nplain\r\n") == [.heading("H"), .bullet("one"), .text("plain")])
     }
     @Test func emptyNotesGiveNothing() { #expect(parseReleaseNotes("  \n\n").isEmpty) }
+    @Test func indentedLinesContinueTheBulletAbove() {
+        #expect(parseReleaseNotes("- Closing a tab shows the tab above,\n  pinned tiles included.\n- Next") ==
+                [.bullet("Closing a tab shows the tab above, pinned tiles included."), .bullet("Next")])
+        #expect(parseReleaseNotes("## H\n  indented") == [.heading("H"), .text("indented")])
+    }
 }

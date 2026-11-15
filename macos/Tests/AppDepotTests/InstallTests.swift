@@ -81,6 +81,7 @@ final class FakeControl: AppProcessControlling {
     func open(_ app: URL, arguments: [String]?) { opened.append((app, arguments)) }
 }
 
+@MainActor
 final class RecordingSink: EventSink {
     var events: [DepotEvent] = []
     func record(_ e: DepotEvent) { events.append(e) }

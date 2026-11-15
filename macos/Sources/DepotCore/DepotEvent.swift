@@ -24,6 +24,7 @@ public struct DepotEvent: Equatable, Sendable {
 }
 
 /// Where events go (history + outbox in the app, a recorder in tests).
+@MainActor
 public protocol EventSink: AnyObject {
     func record(_ e: DepotEvent)
 }
