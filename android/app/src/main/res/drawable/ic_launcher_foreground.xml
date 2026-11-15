@@ -6,14 +6,14 @@
     android:viewportHeight="108">
     <!-- Crate body -->
     <path
-        android:fillColor="#FFFFFF"
+        android:fillColor="@color/ic_launcher_crate"
         android:pathData="M30,44 L78,44 L78,76 Q78,80 74,80 L34,80 Q30,80 30,76 Z" />
     <!-- Lid -->
     <path
-        android:fillColor="#E6F4EC"
+        android:fillColor="@color/ic_launcher_lid"
         android:pathData="M27,34 L81,34 Q84,34 84,37 L84,44 L24,44 L24,37 Q24,34 27,34 Z" />
     <!-- Handle slot -->
     <path
-        android:fillColor="#2E7D5B"
+        android:fillColor="@color/ic_launcher_background"
         android:pathData="M45,54 L63,54 Q66,54 66,57 L66,59 Q66,62 63,62 L45,62 Q42,62 42,59 L42,57 Q42,54 45,54 Z" />
 </vector>

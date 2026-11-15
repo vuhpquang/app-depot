@@ -21,10 +21,11 @@ android {
 
     defaultConfig {
         applicationId = "com.vuhpquang.appdepot"
-        minSdk = 31
+        minSdk = 34
         targetSdk = 36
         // 0.1.0 -> 100, 1.2.3 -> 10203 (same as core/VersionCode.kt)
-        versionCode = appVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10_000 + b * 100 + c }
+        versionCode = appVersion.also { require(Regex("""\d+\.\d+\.\d+""").matches(it)) { "VERSION must be X.Y.Z, was '$it'" } }
+            .split(".").map { it.toInt() }.let { (a, b, c) -> a * 10_000 + b * 100 + c }
         versionName = appVersion
     }
 
