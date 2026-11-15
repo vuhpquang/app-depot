@@ -81,8 +81,9 @@ final class DepotModel {
     }
 
     /// Fetches the live catalog. Offline or malformed → the cached list stays with a "Couldn't refresh" line.
+    /// `quiet` (background runs) never changes what the user sees on failure.
     @discardableResult
-    func refresh() async -> Bool {
+    func refresh(quiet: Bool = false) async -> Bool {
         guard !isRefreshing else { return false }
         isRefreshing = true
         defer { isRefreshing = false }
@@ -99,6 +100,7 @@ final class DepotModel {
             return true
         } catch {
             log.error("catalog refresh failed: \(error.localizedDescription, privacy: .public)")
+            if quiet { return false }
             refreshError = apps.isEmpty ? "Couldn't load the app list. Check your connection and try again."
                                         : "Couldn't refresh. Showing the list from \(catalogDate.map(Self.relative) ?? "earlier")."
             rescanInstalled()

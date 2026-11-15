@@ -44,9 +44,20 @@ struct AppDepotApp: App {
 /// Menu bar icon: a crate, with a badge dot style symbol while updates wait.
 struct MenuBarLabel: View {
     let model: DepotModel
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         Image(systemName: model.updateCount > 0 ? "shippingbox.and.arrow.backward.fill" : "shippingbox")
             .accessibilityLabel(model.updateCount > 0 ? "App Depot, \(model.statusLine)" : "App Depot")
+            .onAppear {
+                // The menu bar label always exists: it gives the app a way to reopen the main window
+                // (notifications, Dock icon) after it was closed.
+                let open = openWindow
+                AppEnvironment.shared.openMain = {
+                    open(id: "main")
+                    NSApp.activate()
+                }
+            }
     }
 }
 
@@ -87,6 +98,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         #endif
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        launchedInBackground = CommandLine.arguments.contains("--background")
+            || (event?.eventID == kAEOpenApplication
+                && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem)
         if let dir = ProcessInfo.processInfo.environment["APPDEPOT_SNAPSHOT"] {
             snapshotMode = true
             NSApp.setActivationPolicy(.accessory)
@@ -104,10 +119,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.recordLaunch()
         WhatsNewTracker.shared.evaluateLaunch()
         if WhatsNewTracker.shared.pendingVersion != nil, AppIdentity.appDepot.whatsNew == .automatic { env.showWhatsNew() }
+        SystemNotifier.shared.activate()
+        SystemNotifier.shared.onOpen = { AppEnvironment.shared.openMain?() }
         Task {
             await env.refreshAndRecord()
             await env.uploader?.flush()
         }
+        BackgroundScheduler.shared.start()
+        if launchedInBackground {
+            // Started at login (or with --background): stay in the menu bar, no window.
+            DispatchQueue.main.async {
+                NSApp.windows.filter { $0.identifier?.rawValue.hasPrefix("main") == true }.forEach { $0.close() }
+            }
+        }
+    }
+
+    private var launchedInBackground = false
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { AppEnvironment.shared.openMain?() }
+        return true
     }
 
     /// The window can be closed; App Depot keeps running in the menu bar.

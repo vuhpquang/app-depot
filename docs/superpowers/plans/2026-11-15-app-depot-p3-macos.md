@@ -71,7 +71,7 @@
 ### Task 6: Background checks, notifications, self-update handoff
 
 **Files:** `Sources/AppDepot/Background/{Scheduler.swift (10 s after launch, every 6 h, only while autoCheck), BackgroundRun.swift (planBackground from DepotCore; silent install only for managed apps that are NOT running and not Wisp; else notify), Notifications.swift (UNUserNotificationCenter, ask once)}`; self-update: after any queue, if `app-depot-macos` has an update and the user chose Update/Update all (or autoInstall), call app-shell `Updater.shared.installNow()` last.
-- [ ] Tests: planBackground cases ported from Android + "running app → notify not install" + "Wisp never installed". Commit `feat: background checks and notifications`, push.
+- [x] Tests: planBackground cases ported from Android + "running app → notify not install" + "Wisp never installed". Commit `feat: background checks and notifications`, push.
 
 ### Task 7: Release, catalog entry, install
 

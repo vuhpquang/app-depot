@@ -19,6 +19,8 @@ final class AppEnvironment {
     let model: DepotModel
     let icons = IconCache()
     let api: DepotAPI
+    /// Opens (or brings back) the main window; set once the menu bar label exists.
+    var openMain: (@MainActor () -> Void)?
     private let log = Logger(subsystem: "com.vuhpquang.appdepot", category: "app")
 
     static var isSnapshot: Bool { ProcessInfo.processInfo.environment["APPDEPOT_SNAPSHOT"] != nil }
