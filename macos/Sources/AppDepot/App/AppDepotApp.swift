@@ -46,5 +46,15 @@ struct AppCommands: Commands {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        if let slug = DebugCLI.slug {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { @MainActor in exit(await DebugCLI.run(slug)) }
+            return
+        }
+        #endif
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {}
 }
