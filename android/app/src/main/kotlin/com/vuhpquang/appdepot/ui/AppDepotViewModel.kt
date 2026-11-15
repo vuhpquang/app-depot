@@ -17,6 +17,7 @@ import com.vuhpquang.appdepot.core.InstallProgress
 import com.vuhpquang.appdepot.core.PairResult
 import com.vuhpquang.appdepot.core.SELF_SLUG
 import com.vuhpquang.appdepot.core.planFor
+import com.vuhpquang.appdepot.core.matchesQuery
 import android.util.Log
 import com.vuhpquang.appdepot.android.DEPOT_BASE_URL
 import com.vuhpquang.appdepot.core.normalizeServerUrl
@@ -41,14 +42,21 @@ data class AppRow(
 )
 
 data class HomeUi(
+    /** Every app, in the chosen [sort] order. */
     val rows: List<AppRow> = emptyList(),
     val refreshing: Boolean = false,
     val refreshFailed: Boolean = false,
     /** True once a catalog (cached or fresh) has been read, so "no apps" isn't shown while loading. */
     val loaded: Boolean = false,
     val updatingAll: Boolean = false,
+    val layout: HomeLayout = HomeLayout.List,
+    val sort: SortOrder = SortOrder.UpdatesFirst,
+    val query: String = "",
 ) {
     val updatable: List<AppRow> get() = rows.filter { it.state is AppState.UpdateAvailable }
+
+    /** What the list shows: [rows] filtered by the search [query]. Update all still covers every app. */
+    val visible: List<AppRow> get() = if (query.isBlank()) rows else rows.filter { matchesQuery(it.app, query) }
 
     /** Any install running (one app or Update all): Update all waits for it. */
     val busy: Boolean get() = updatingAll || rows.any { it.model.activity != null }
@@ -83,23 +91,34 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     private val refreshing = MutableStateFlow(false)
     private val refreshFailed = MutableStateFlow(false)
     private val updatingAll = MutableStateFlow(false)
+    private val skipped = MutableStateFlow(settings.skipped)
+
+    /** Layout, sort and search: how Home shows the list. */
+    private data class Inputs(
+        val apps: List<CatalogApp>?, val installed: Map<String, String?>, val launchable: Set<String>, val skipped: Map<String, String>,
+    )
+    private data class View(val layout: HomeLayout, val sort: SortOrder, val query: String)
+    private val view = MutableStateFlow(View(HomeLayout.fromKey(settings.layout), SortOrder.fromKey(settings.sort), ""))
 
     val versionName: String get() = app.versionName
     val versionCode: Long get() = app.versionCode
 
     val home: StateFlow<HomeUi> = combine(
-        combine(catalog, installed, launchable, ::Triple),
+        combine(catalog, installed, launchable, skipped, ::Inputs),
         coordinator.progress,
-        refreshing,
-        refreshFailed,
-        updatingAll,
-    ) { (apps, inst, launch), progress, isRefreshing, failed, all ->
+        combine(refreshing, refreshFailed, updatingAll, ::Triple),
+        view,
+    ) { (apps, inst, launch, skip), progress, (isRefreshing, failed, all), v ->
+        val rows = (apps ?: emptyList()).map { a -> rowFor(a, inst[a.slug], a.slug in launch, progress[a.slug], skip[a.slug]) }
         HomeUi(
-            rows = (apps ?: emptyList()).map { a -> rowFor(a, inst[a.slug], a.slug in launch, progress[a.slug]) },
+            rows = sortRows(rows, v.sort),
             refreshing = isRefreshing,
             refreshFailed = failed,
             loaded = apps != null,
             updatingAll = all,
+            layout = v.layout,
+            sort = v.sort,
+            query = v.query,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeUi())
 
@@ -136,8 +155,8 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun rowFor(a: CatalogApp, version: String?, canLaunch: Boolean, progress: InstallProgress?): AppRow {
-        val state = planFor(a, version)
+    private fun rowFor(a: CatalogApp, version: String?, canLaunch: Boolean, progress: InstallProgress?, skippedVersion: String?): AppRow {
+        val state = planFor(a, version, skippedVersion)
         return AppRow(a, state, cardModel(state, progress, canLaunch, a.latest), canLaunch)
     }
 
@@ -164,7 +183,8 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
                 reloadInstalled()
                 result.getOrNull()?.let { apps ->
                     val versions = installed.value
-                    val n = apps.count { planFor(it, versions[it.slug]) is AppState.UpdateAvailable }
+                    val skip = skipped.value
+                    val n = apps.count { planFor(it, versions[it.slug], skip[it.slug]) is AppState.UpdateAvailable }
                     withContext(Dispatchers.IO) {
                         app.history.recordCheck(if (n == 1) "1 update" else "$n updates")
                         app.uploader.flush()
@@ -263,6 +283,49 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
     fun recordOpen(slug: String) {
         app.scope.launch { app.history.record(DepotEvent("open", appSlug = slug, toVersion = installed.value[slug])) }
     }
+
+    // --- Uninstall, skip, view ------------------------------------------------------------------
+
+    /** The system uninstall dialog for [slug]; null for App Depot itself or an unknown app. */
+    fun uninstallIntent(slug: String): Intent? {
+        if (slug == SELF_SLUG) return null
+        val a = catalog.value?.firstOrNull { it.slug == slug } ?: return null
+        return Intent(Intent.ACTION_DELETE, Uri.parse("package:${a.appId}"))
+    }
+
+    /** Back from the uninstall dialog: re-read versions; a local-only history row if the app is gone. */
+    fun afterUninstall(slug: String) {
+        val before = installed.value[slug]
+        viewModelScope.launch {
+            reloadInstalled()
+            if (before != null && installed.value[slug] == null) {
+                withContext(Dispatchers.IO) { app.history.record(DepotEvent("uninstall", appSlug = slug, fromVersion = before)) }
+                loadHistory()
+            }
+        }
+    }
+
+    fun skipVersion(slug: String, version: String) {
+        settings.skipped = settings.skipped + (slug to version)
+        skipped.value = settings.skipped
+    }
+
+    fun undoSkip(slug: String) {
+        settings.skipped = settings.skipped - slug
+        skipped.value = settings.skipped
+    }
+
+    fun setLayout(layout: HomeLayout) {
+        settings.layout = layout.key
+        view.update { it.copy(layout = layout) }
+    }
+
+    fun setSort(sort: SortOrder) {
+        settings.sort = sort.key
+        view.update { it.copy(sort = sort) }
+    }
+
+    fun setQuery(query: String) = view.update { it.copy(query = query) }
 
     fun unknownSourcesIntent(): Intent =
         Intent(SystemSettings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))

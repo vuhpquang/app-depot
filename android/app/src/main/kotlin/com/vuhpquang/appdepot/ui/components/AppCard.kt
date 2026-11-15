@@ -9,7 +9,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -27,6 +45,8 @@ import com.vuhpquang.appdepot.ui.AppRow
 import com.vuhpquang.appdepot.ui.CardAction
 import com.vuhpquang.appdepot.ui.CardActivity
 import com.vuhpquang.appdepot.ui.CardModel
+import com.vuhpquang.appdepot.ui.MenuAction
+import com.vuhpquang.appdepot.ui.menuActions
 import com.vuhpquang.appdepot.ui.theme.DepotTokens
 
 @Composable
@@ -35,6 +55,7 @@ fun AppCard(
     onClick: () -> Unit,
     onAction: (CardAction) -> Unit,
     onAllowInstalls: () -> Unit,
+    onMenu: (MenuAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -56,6 +77,7 @@ fun AppCard(
                     )
                 }
                 ActionButton(row.model.action, onAction)
+                AppMenu(row, onMenu)
             }
             StatusLine(row.model)
             CardFooter(row.model, onAllowInstalls)
@@ -63,13 +85,88 @@ fun AppCard(
     }
 }
 
+/** Gallery tile: big icon, name, status chip and one action button. */
 @Composable
-fun ActionButton(action: CardAction?, onAction: (CardAction) -> Unit, modifier: Modifier = Modifier) {
+fun AppGridCard(
+    row: AppRow,
+    onClick: () -> Unit,
+    onAction: (CardAction) -> Unit,
+    onAllowInstalls: () -> Unit,
+    onMenu: (MenuAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(DepotTokens.RadiusLg),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Box {
+            Column(
+                Modifier.fillMaxWidth().padding(DepotTokens.SpaceMd),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm),
+            ) {
+                AppIcon(row.app.name, row.app.iconUrl, size = DepotTokens.IconGrid)
+                Text(
+                    row.app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                )
+                val m = row.model
+                when {
+                    m.chip != null -> StatusChip(m.chip)
+                    m.latest != null -> Text(
+                        stringResource(R.string.latest_only, m.latest),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    else -> Spacer(Modifier.height(DepotTokens.SpaceMd))
+                }
+                if (m.activity != null || m.needsPermission || m.error != null) {
+                    CardFooter(m, onAllowInstalls, Modifier.fillMaxWidth())
+                } else if (m.action != null) {
+                    ActionButton(m.action, onAction, Modifier.fillMaxWidth())
+                } else {
+                    Spacer(Modifier.height(DepotTokens.TouchMin))
+                }
+            }
+            AppMenu(row, onMenu, Modifier.align(Alignment.TopEnd))
+        }
+    }
+}
+
+/** The card's "⋮" menu: Open / Uninstall / Share link / Release page, as they apply. */
+@Composable
+fun AppMenu(row: AppRow, onMenu: (MenuAction) -> Unit, modifier: Modifier = Modifier) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        IconButton({ open = true }) { Icon(Icons.Outlined.MoreVert, stringResource(R.string.action_more)) }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            menuActions(row).forEach { a ->
+                val (label, icon) = when (a) {
+                    MenuAction.Open -> R.string.action_open to Icons.Outlined.PlayCircle
+                    MenuAction.Uninstall -> R.string.action_uninstall to Icons.Outlined.Delete
+                    MenuAction.Share -> R.string.action_share to Icons.Outlined.Share
+                    MenuAction.ReleasePage -> R.string.action_release_page to Icons.AutoMirrored.Outlined.OpenInNew
+                }
+                DropdownMenuItem(
+                    text = { Text(stringResource(label)) },
+                    leadingIcon = { Icon(icon, contentDescription = null) },
+                    onClick = { open = false; onMenu(a) },
+                )
+            }
+        }
+    }
+}
+
+/** [size] (e.g. "57 MB") is appended to Install / Update: "Update · 57 MB". */
+@Composable
+fun ActionButton(action: CardAction?, onAction: (CardAction) -> Unit, modifier: Modifier = Modifier, size: String? = null) {
     val m = modifier.heightIn(min = DepotTokens.TouchMin)
+    @Composable fun label(res: Int) = stringResource(res).let { if (size != null) stringResource(R.string.action_with_size, it, size) else it }
     when (action) {
-        CardAction.Update -> Button({ onAction(action) }, m) { Text(stringResource(R.string.action_update)) }
-        CardAction.Install -> FilledTonalButton({ onAction(action) }, m) { Text(stringResource(R.string.action_install)) }
-        CardAction.Open -> OutlinedButton({ onAction(action) }, m) { Text(stringResource(R.string.action_open)) }
+        CardAction.Update -> Button({ onAction(action) }, m) { Text(label(R.string.action_update), maxLines = 1) }
+        CardAction.Install -> FilledTonalButton({ onAction(action) }, m) { Text(label(R.string.action_install), maxLines = 1) }
+        CardAction.Open -> OutlinedButton({ onAction(action) }, m) { Text(stringResource(R.string.action_open), maxLines = 1) }
         null -> Unit
     }
 }

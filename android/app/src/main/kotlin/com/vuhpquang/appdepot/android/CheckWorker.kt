@@ -43,9 +43,10 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         settings.lastChecked = System.currentTimeMillis()
 
         val pretend = app.readPretend()
+        val skipped = settings.skipped
         val next: Map<String, AppState> = apps.associate { a ->
             val real = if (a.slug == SELF_SLUG) app.versionName else app.installedApps.versionOf(a.appId)
-            a.slug to planFor(a, if (real != null) pretend[a.slug] ?: real else null)
+            a.slug to planFor(a, if (real != null) pretend[a.slug] ?: real else null, skipped[a.slug])
         }
         val n = next.values.count { it is AppState.UpdateAvailable }
         app.history.recordCheck(if (n == 1) "1 update" else "$n updates")

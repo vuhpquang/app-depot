@@ -19,7 +19,7 @@ import com.vuhpquang.appdepot.R
 import com.vuhpquang.appdepot.ui.theme.DepotTokens
 
 @Composable
-fun UpdateAllBar(count: Int, running: Boolean, onUpdateAll: () -> Unit, modifier: Modifier = Modifier) {
+fun UpdateAllBar(count: Int, running: Boolean, onUpdateAll: () -> Unit, modifier: Modifier = Modifier, size: String? = null) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(DepotTokens.RadiusLg),
@@ -37,7 +37,7 @@ fun UpdateAllBar(count: Int, running: Boolean, onUpdateAll: () -> Unit, modifier
                 modifier = Modifier.weight(1f),
             )
             Button(onUpdateAll, enabled = !running, modifier = Modifier.heightIn(min = DepotTokens.TouchMin)) {
-                Text(if (running) stringResource(R.string.update_all_running) else stringResource(R.string.update_all, count))
+                Text(if (running) stringResource(R.string.update_all_running) else if (size != null) stringResource(R.string.update_all_size, count, size) else stringResource(R.string.update_all, count))
             }
         }
     }

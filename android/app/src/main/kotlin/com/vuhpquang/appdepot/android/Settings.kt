@@ -1,6 +1,8 @@
 package com.vuhpquang.appdepot.android
 
 import android.content.Context
+import com.vuhpquang.appdepot.core.formatSlugMap
+import com.vuhpquang.appdepot.core.parseSlugMap
 
 /** User settings and small update bookkeeping. Keys are stable: never rename them. */
 class Settings(context: Context) {
@@ -41,11 +43,24 @@ class Settings(context: Context) {
         get() = readMap(KEY_BG_FAILED)
         set(v) = writeMap(KEY_BG_FAILED, v)
 
-    private fun readMap(key: String): Map<String, String> = prefs.getString(key, null)?.lineSequence()
-        ?.mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }?.toMap() ?: emptyMap()
+    /** Skipped updates: slug -> the version the user chose to skip (a newer one shows up again). */
+    var skipped: Map<String, String>
+        get() = readMap(KEY_SKIPPED)
+        set(v) = writeMap(KEY_SKIPPED, v)
 
-    private fun writeMap(key: String, v: Map<String, String>) =
-        prefs.edit().putString(key, v.entries.joinToString("\n") { "${it.key}=${it.value}" }).apply()
+    /** Home layout: "list" | "grid". */
+    var layout: String?
+        get() = prefs.getString(KEY_LAYOUT, null)
+        set(v) = prefs.edit().putString(KEY_LAYOUT, v).apply()
+
+    /** Home sort: "updates" | "name" | "recent". */
+    var sort: String?
+        get() = prefs.getString(KEY_SORT, null)
+        set(v) = prefs.edit().putString(KEY_SORT, v).apply()
+
+    private fun readMap(key: String): Map<String, String> = parseSlugMap(prefs.getString(key, null))
+
+    private fun writeMap(key: String, v: Map<String, String>) = prefs.edit().putString(key, formatSlugMap(v)).apply()
 
     /** Debug builds only: catalog + device API server; null = [DEPOT_BASE_URL]. */
     var serverUrl: String?
@@ -61,5 +76,8 @@ class Settings(context: Context) {
         const val KEY_BG_NOTIFIED = "appdepot.background.notified"
         const val KEY_BG_FAILED = "appdepot.background.failed"
         const val KEY_SERVER_URL = "appdepot.debug.serverUrl"
+        const val KEY_SKIPPED = "appdepot.skipped"
+        const val KEY_LAYOUT = "appdepot.ui.layout"
+        const val KEY_SORT = "appdepot.ui.sort"
     }
 }

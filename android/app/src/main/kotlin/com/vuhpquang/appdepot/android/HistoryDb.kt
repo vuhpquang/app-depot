@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.vuhpquang.appdepot.core.DepotEvent
+import com.vuhpquang.appdepot.core.isUploaded
 import com.vuhpquang.appdepot.core.toWireJson
 import com.vuhpquang.appdepot.core.trimOutbox
 import java.time.Instant
@@ -32,7 +33,7 @@ class HistoryDb(context: Context) : SQLiteOpenHelper(context, "history.db", null
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
 
-    /** Writes the history row and the outbox row together; keeps the outbox at its cap. */
+    /** Writes the history row and the outbox row together (local-only types skip the outbox); keeps the outbox at its cap. */
     fun insert(e: DepotEvent) {
         val db = writableDatabase
         db.beginTransaction()
@@ -44,10 +45,12 @@ class HistoryDb(context: Context) : SQLiteOpenHelper(context, "history.db", null
                     put("to_version", e.toVersion); put("message", e.message); put("at", e.at.toEpochMilli())
                 },
             )
-            db.insert(
-                "outbox", null,
-                ContentValues().apply { put("json", e.toWireJson()); put("created_at", e.at.toEpochMilli()) },
-            )
+            if (isUploaded(e.type)) {
+                db.insert(
+                    "outbox", null,
+                    ContentValues().apply { put("json", e.toWireJson()); put("created_at", e.at.toEpochMilli()) },
+                )
+            }
             db.execSQL("DELETE FROM history WHERE id <= (SELECT MAX(id) FROM history) - $HISTORY_CAP")
             val drop = trimOutbox(outboxCount(db))
             if (drop > 0) {

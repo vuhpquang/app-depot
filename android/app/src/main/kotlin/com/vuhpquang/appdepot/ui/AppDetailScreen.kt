@@ -1,6 +1,15 @@
 package com.vuhpquang.appdepot.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.automirrored.outlined.Undo
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DoNotDisturbOn
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.vuhpquang.appdepot.core.AppState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,6 +52,7 @@ fun AppDetailScreen(vm: AppDepotViewModel, slug: String, onBack: () -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(Unit) { vm.loadHistory() }
     val row = ui.rows.firstOrNull { it.app.slug == slug }
+    val uninstall = rememberUninstaller(vm)
     Scaffold(topBar = { BackTopBar(row?.app?.name ?: "", onBack) }) { padding ->
         if (row == null) {
             Text(
@@ -65,13 +75,21 @@ fun AppDetailScreen(vm: AppDepotViewModel, slug: String, onBack: () -> Unit) {
             }
             StatusLine(row.model)
             Row(horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm)) {
-                ActionButton(row.model.action, { handleAction(vm, context, slug, it) })
+                ActionButton(row.model.action, { handleAction(vm, context, slug, it) }, size = formatSize(context, downloadBytes(row)))
                 // Updating or installing: also offer Open when the app is already there.
                 if (row.model.action != CardAction.Open && row.model.action != null && row.launchable) {
                     ActionButton(CardAction.Open, { handleAction(vm, context, slug, it) })
                 }
             }
             CardFooter(row.model, onAllowInstalls = { context.startSafely(vm.unknownSourcesIntent()) })
+            (row.state as? AppState.Skipped)?.let {
+                Text(
+                    stringResource(R.string.skipped_note, it.latest.version),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DetailActions(vm, row, onUninstall = uninstall)
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Text(stringResource(R.string.whats_new), style = MaterialTheme.typography.titleMedium)
@@ -119,3 +137,31 @@ private fun NoNotes() {
 private fun formatDate(iso: String): String = runCatching {
     DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withZone(ZoneId.systemDefault()).format(Instant.parse(iso))
 }.getOrDefault(iso.take(10))
+
+/** Skip / Undo skip, Uninstall, Share link, Release page: as many as apply, wrapping on narrow screens. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DetailActions(vm: AppDepotViewModel, row: AppRow, onUninstall: (String) -> Unit) {
+    val context = LocalContext.current
+    val slug = row.app.slug
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceXs)) {
+        when (val s = row.state) {
+            is AppState.UpdateAvailable -> DetailAction(R.string.action_skip_version, Icons.Outlined.DoNotDisturbOn) {
+                vm.skipVersion(slug, s.latest.version)
+            }
+            is AppState.Skipped -> DetailAction(R.string.action_undo_skip, Icons.AutoMirrored.Outlined.Undo) { vm.undoSkip(slug) }
+            else -> Unit
+        }
+        if (canUninstall(row)) DetailAction(R.string.action_uninstall, Icons.Outlined.Delete) { onUninstall(slug) }
+        if (row.app.latest != null) DetailAction(R.string.action_share, Icons.Outlined.Share) { shareApp(context, row.app) }
+        DetailAction(R.string.action_release_page, Icons.AutoMirrored.Outlined.OpenInNew) { context.openUrl(releasePageUrl(row.app)) }
+    }
+}
+
+@Composable
+private fun DetailAction(label: Int, icon: ImageVector, onClick: () -> Unit) {
+    TextButton(onClick, Modifier.heightIn(min = DepotTokens.TouchMin)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(DepotTokens.IconSmall))
+        Text(stringResource(label), modifier = Modifier.padding(start = DepotTokens.SpaceSm))
+    }
+}

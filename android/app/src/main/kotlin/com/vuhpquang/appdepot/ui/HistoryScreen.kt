@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Launch
@@ -69,6 +70,7 @@ fun HistoryItem(row: HistoryRow, vm: AppDepotViewModel) {
         "crash" -> Icons.Outlined.ReportProblem
         "check" -> Icons.Outlined.Refresh
         "open" -> Icons.Outlined.Launch
+        "uninstall" -> Icons.Outlined.Delete
         else -> Icons.Outlined.PlayCircle
     }
     val label = stringResource(
@@ -78,6 +80,7 @@ fun HistoryItem(row: HistoryRow, vm: AppDepotViewModel) {
             "install_failed" -> R.string.history_failed
             "check" -> R.string.history_check
             "open" -> R.string.history_open
+            "uninstall" -> R.string.history_uninstall
             "crash" -> R.string.history_crash
             "self_update" -> R.string.history_self_update
             else -> R.string.history_started

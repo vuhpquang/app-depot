@@ -14,6 +14,17 @@ portfolio). Phase 2 = Android app in `android/`; phase 3 = macOS app (SwiftUI).
 - Author/About strings follow the hub's `.claude/rules/app-shell.md`.
 - UI: `ui/` (Compose + navigation-compose; `AppDepotViewModel` is the one state holder). Card states are a
   pure mapping in `ui/HomeState.kt` (`cardModel`), tested in `HomeStateTest`. Settings prefs in `android/Settings.kt`.
+- Home list logic is pure in `ui/HomeList.kt` (`HomeListTest`): sort (`SortOrder`), layout (`HomeLayout`), sizes,
+  release-page URL (private repos served via `vuhpquang.com/api/depot/download/` → `vuhpquang.com/apps`),
+  uninstall eligibility (installed, never App Depot itself), card "⋮" menu. Search folding (accent-insensitive,
+  Vietnamese đ) in `core/Search.kt`.
+- Android prefs added in 0.2.0: `appdepot.ui.layout` (`list`|`grid`), `appdepot.ui.sort` (`updates`|`name`|`recent`),
+  `appdepot.skipped` (`slug=version` lines). A skipped version plans as `AppState.Skipped` (chip "Skipped"):
+  no badge, not in Update all or background notify/install, until a newer version is published.
+- Uninstall: `Intent.ACTION_DELETE` (`REQUEST_DELETE_PACKAGES`); the `uninstall` history row is local-only
+  (`LOCAL_ONLY_EVENT_TYPES` in `core/DepotEvent.kt` keeps it out of the outbox: the server's event types are closed).
+- Icons: catalog `iconUrl`, cached on disk in `cacheDir/icons/<sha256(url)>.png` (refetched after 7 days),
+  letter tile only while loading or on failure. About shows App Depot's own launcher icon.
 - Debug-only update testing: `adb shell "run-as com.vuhpquang.appdepot.dev sh -c 'echo zentask-android=0.0.1 > files/pretend.txt'"`
   makes an installed app look outdated (`slug=version` lines; ignored in release builds). Remove the file afterwards.
 

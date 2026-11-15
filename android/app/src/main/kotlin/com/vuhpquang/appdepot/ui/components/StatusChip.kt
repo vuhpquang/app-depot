@@ -19,11 +19,12 @@ fun StatusChip(chip: CardChip, modifier: Modifier = Modifier) {
         CardChip.UpdateAvailable -> c.primaryContainer to c.onPrimaryContainer
         CardChip.LocalBuild -> c.tertiaryContainer to c.onTertiaryContainer
         CardChip.UpToDate, CardChip.SelfUpdates -> c.secondaryContainer to c.onSecondaryContainer
-        CardChip.NoRelease, CardChip.NotInstallable -> c.surfaceContainerHighest to c.onSurfaceVariant
+        CardChip.NoRelease, CardChip.NotInstallable, CardChip.Skipped -> c.surfaceContainerHighest to c.onSurfaceVariant
     }
     val label = when (chip) {
         CardChip.UpToDate -> R.string.chip_up_to_date
         CardChip.UpdateAvailable -> R.string.chip_update_available
+        CardChip.Skipped -> R.string.chip_skipped
         CardChip.LocalBuild -> R.string.chip_local_build
         CardChip.NoRelease -> R.string.chip_no_release
         CardChip.NotInstallable -> R.string.chip_not_installable

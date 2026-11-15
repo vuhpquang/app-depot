@@ -27,12 +27,19 @@ object DepotTokens {
     /** App icon on a card / in the detail header / in About. */
     val IconCard = 48.dp
     val IconHeader = 72.dp
+    val IconGrid = 64.dp
+
+    /** Narrowest gallery cell: 2 columns on phones. */
+    val GridCellMin = 160.dp
 
     /** Minimum touch target. */
     val TouchMin = 48.dp
 
     /** Small leading icon in list rows (history). */
     val IconRow = 24.dp
+
+    /** Icon inside a text button. */
+    val IconSmall = 18.dp
     val ProgressHeight = 4.dp
 
     /** Content alpha for disabled rows (Material's disabled level). */
