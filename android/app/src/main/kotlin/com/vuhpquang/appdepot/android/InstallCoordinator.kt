@@ -14,12 +14,14 @@ import com.vuhpquang.appdepot.core.SELF_SLUG
 import com.vuhpquang.appdepot.core.VerifyResult
 import com.vuhpquang.appdepot.core.claimable
 import com.vuhpquang.appdepot.core.runInstallQueue
+import com.vuhpquang.appdepot.core.selfMayStart
 import com.vuhpquang.appdepot.core.safeFileSegment
 import com.vuhpquang.appdepot.core.signerMatches
 import com.vuhpquang.appdepot.core.verifyDownload
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +42,7 @@ class InstallCoordinator(
     private val downloader: ApkDownloader = ApkDownloader("AppDepot-Android"),
 ) {
     val installer = ApkInstaller(context)
+    private companion object { const val SELF_POLL_MS = 400L }
     private val lock = Mutex()
     private val claimLock = Any()
     private val _progress = MutableStateFlow<Map<String, InstallProgress>>(emptyMap())
@@ -73,8 +76,30 @@ class InstallCoordinator(
     private fun unqueue(slugs: List<String>) =
         _progress.update { m -> m.filter { (k, v) -> !(k in slugs && v == InstallProgress.Queued) } }
 
-    suspend fun install(app: CatalogApp, interactive: Boolean = true): InstallOutcome? {
+    /**
+     * App Depot's own install: its restart kills the process, so it waits until no other install is
+     * queued or running ([waitForOthers]; false = give up and return null instead of waiting).
+     * The slug must already be claimed.
+     */
+    private suspend fun runSelfWhenClear(app: CatalogApp, interactive: Boolean, waitForOthers: Boolean): InstallOutcome? {
+        try {
+            while (true) {
+                lock.withLock { if (selfMayStart(_progress.value)) return runOne(app, interactive) }
+                if (!waitForOthers) {
+                    unqueue(listOf(app.slug))
+                    return null
+                }
+                delay(SELF_POLL_MS)
+            }
+        } catch (e: CancellationException) {
+            unqueue(listOf(app.slug))
+            throw e
+        }
+    }
+
+    suspend fun install(app: CatalogApp, interactive: Boolean = true, waitForOthers: Boolean = true): InstallOutcome? {
         if (claim(listOf(app.slug)).isEmpty()) return null
+        if (app.slug == SELF_SLUG) return runSelfWhenClear(app, interactive, waitForOthers)
         try {
             return lock.withLock { runOne(app, interactive) }
         } catch (e: CancellationException) {
@@ -84,16 +109,32 @@ class InstallCoordinator(
     }
 
     /** Installs the apps one at a time (self last). Returns each outcome; apps already busy are left out. */
-    suspend fun updateAll(apps: List<CatalogApp>, interactive: Boolean = true): Map<String, InstallOutcome> {
+    suspend fun updateAll(
+        apps: List<CatalogApp>, interactive: Boolean = true, waitForOthers: Boolean = true,
+    ): Map<String, InstallOutcome> {
         val mine = claim(apps.map { it.slug }).toSet()
         val todo = apps.filter { it.slug in mine }
         if (todo.isEmpty()) return emptyMap()
+        val others = todo.filter { it.slug != SELF_SLUG }
+        val self = todo.firstOrNull { it.slug == SELF_SLUG }
+        val results = LinkedHashMap<String, InstallOutcome>()
         try {
-            return lock.withLock { runInstallQueue(todo, { a -> runOne(a, interactive) }) { slug, p -> set(slug, p) } }
+            if (others.isNotEmpty()) {
+                results += lock.withLock { runInstallQueue(others, { a -> runOne(a, interactive) }) { slug, p -> set(slug, p) } }
+            }
         } catch (e: CancellationException) {
             unqueue(todo.map { it.slug })
             throw e
         }
+        if (self != null) {
+            if (results.values.any { it == InstallOutcome.NeedsPermission }) {
+                set(self.slug, InstallProgress.NeedsPermission)
+                results[self.slug] = InstallOutcome.NeedsPermission
+            } else {
+                runSelfWhenClear(self, interactive, waitForOthers)?.let { results[self.slug] = it }
+            }
+        }
+        return results
     }
 
     private suspend fun runOne(app: CatalogApp, interactive: Boolean): InstallOutcome {

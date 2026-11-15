@@ -2,6 +2,8 @@ package com.vuhpquang.appdepot.core
 
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstallQueueTest {
@@ -83,4 +85,34 @@ class InstallQueueTest {
         assertEquals("1.2.3-beta_1", safeFileSegment("1.2.3-beta+1"))
         assertEquals(".._.._etc_passwd", safeFileSegment("../../etc/passwd"))
     }
+
+    @Test fun planSelfUpdatePutsOthersFirstInOrderAndSelfLast() = assertEquals(
+        listOf("a", "b", "app-depot-android"),
+        planSelfUpdate(listOf("a", "app-depot-android", "b")),
+    )
+
+    @Test fun planSelfUpdateAddsSelfWhenAbsentAndKeepsItAlone() {
+        assertEquals(listOf("app-depot-android"), planSelfUpdate(emptyList()))
+        assertEquals(listOf("a", "app-depot-android"), planSelfUpdate(listOf("a")))
+    }
+
+    @Test fun selfMayStartWhenNothingElseIsActive() {
+        assertTrue(selfMayStart(emptyMap()))
+        assertTrue(selfMayStart(mapOf(SELF_SLUG to InstallProgress.Queued)))
+        assertTrue(selfMayStart(mapOf("a" to InstallProgress.Done("1"), "b" to InstallProgress.Failed("x"), "c" to InstallProgress.NeedsPermission)))
+    }
+
+    @Test fun selfMayNotStartWhileAnotherInstallIsActive() {
+        listOf(
+            InstallProgress.Queued, InstallProgress.Downloading(3), InstallProgress.Verifying,
+            InstallProgress.Installing, InstallProgress.NeedsUserAction,
+        ).forEach { p ->
+            assertFalse("$p", selfMayStart(mapOf("a" to p, SELF_SLUG to InstallProgress.Queued)))
+        }
+    }
+
+    @Test fun othersInFlightCountsActiveNonSelf() = assertEquals(
+        2,
+        othersInFlight(mapOf("a" to InstallProgress.Queued, "b" to InstallProgress.Installing, "c" to InstallProgress.Done("1"), SELF_SLUG to InstallProgress.Queued)),
+    )
 }

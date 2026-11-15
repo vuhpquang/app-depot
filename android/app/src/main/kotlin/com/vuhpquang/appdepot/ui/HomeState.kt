@@ -13,6 +13,8 @@ enum class CardChip { UpToDate, UpdateAvailable, Skipped, LocalBuild, NoRelease,
 /** An install in flight: replaces the button with a progress line. */
 sealed interface CardActivity {
     data object Queued : CardActivity
+    /** App Depot's own update, held back until [count] other apps have finished. */
+    data class WaitingForOthers(val count: Int) : CardActivity
     data class Downloading(val percent: Int) : CardActivity
     data object Verifying : CardActivity
     data object Installing : CardActivity
@@ -38,6 +40,7 @@ fun cardModel(
     progress: InstallProgress?,
     canLaunch: Boolean = true,
     latest: CatalogRelease? = null,
+    othersFirst: Int = 0,
 ): CardModel {
     val open = if (canLaunch) CardAction.Open else null
     val base = when (state) {
@@ -54,7 +57,7 @@ fun cardModel(
         )
     }
     val activity = when (progress) {
-        InstallProgress.Queued -> CardActivity.Queued
+        InstallProgress.Queued -> if (othersFirst > 0) CardActivity.WaitingForOthers(othersFirst) else CardActivity.Queued
         is InstallProgress.Downloading -> CardActivity.Downloading(progress.percent)
         InstallProgress.Verifying -> CardActivity.Verifying
         InstallProgress.Installing -> CardActivity.Installing

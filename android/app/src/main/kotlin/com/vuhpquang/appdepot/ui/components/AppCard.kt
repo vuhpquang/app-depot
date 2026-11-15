@@ -39,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.vuhpquang.appdepot.R
@@ -226,6 +227,7 @@ fun CardFooter(model: CardModel, onAllowInstalls: () -> Unit, modifier: Modifier
         model.activity?.let { a ->
             val label = when (a) {
                 CardActivity.Queued -> stringResource(R.string.progress_queued)
+                is CardActivity.WaitingForOthers -> pluralStringResource(R.plurals.progress_waiting_for_others, a.count, a.count)
                 is CardActivity.Downloading -> stringResource(R.string.progress_downloading, a.percent)
                 CardActivity.Verifying -> stringResource(R.string.progress_verifying)
                 CardActivity.Installing -> stringResource(R.string.progress_installing)

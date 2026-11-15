@@ -16,6 +16,8 @@ import com.vuhpquang.appdepot.core.DepotEvent
 import com.vuhpquang.appdepot.core.InstallProgress
 import com.vuhpquang.appdepot.core.PairResult
 import com.vuhpquang.appdepot.core.SELF_SLUG
+import com.vuhpquang.appdepot.core.othersInFlight
+import com.vuhpquang.appdepot.core.planSelfUpdate
 import com.vuhpquang.appdepot.core.planFor
 import com.vuhpquang.appdepot.core.ANDROID
 import com.vuhpquang.appdepot.core.localApps
@@ -121,7 +123,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         view,
     ) { (apps, inst, launch, skip), progress, (isRefreshing, failed, all), v ->
         // Rows are planned for this phone's entries only; the other platforms just get a product card.
-        val products = productRows(apps ?: emptyList(), ANDROID) { a -> rowFor(a, inst[a.slug], a.slug in launch, progress[a.slug], skip[a.slug]) }
+        val products = productRows(apps ?: emptyList(), ANDROID) { a -> rowFor(a, inst[a.slug], a.slug in launch, progress[a.slug], skip[a.slug], if (a.slug == SELF_SLUG) othersInFlight(progress) else 0) }
         HomeUi(
             rows = sortRows(products.mapNotNull { it.row }, v.sort),
             products = products,
@@ -169,9 +171,9 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun rowFor(a: CatalogApp, version: String?, canLaunch: Boolean, progress: InstallProgress?, skippedVersion: String?): AppRow {
+    private fun rowFor(a: CatalogApp, version: String?, canLaunch: Boolean, progress: InstallProgress?, skippedVersion: String?, othersFirst: Int = 0): AppRow {
         val state = planFor(a, version, skippedVersion)
-        return AppRow(a, state, cardModel(state, progress, canLaunch, a.latest), canLaunch)
+        return AppRow(a, state, cardModel(state, progress, canLaunch, a.latest, othersFirst), canLaunch)
     }
 
     fun row(slug: String): AppRow? = home.value.rows.firstOrNull { it.app.slug == slug }
@@ -267,9 +269,22 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
 
     fun install(slug: String) {
         val a = localApp(slug) ?: return
+        if (slug == SELF_SLUG) return updateSelfLast()
         app.scope.launch {
             coordinator.install(a)
             if (coordinator.progress.value[slug] == InstallProgress.NeedsPermission) afterPermission = { install(slug) }
+        }
+    }
+
+    /** App Depot updates last: every other available update goes first, through the same queue as Update all. */
+    private fun updateSelfLast() {
+        val updatable = home.value.updatable.map { it.app }
+        val order = planSelfUpdate(updatable.map { it.slug })
+        val bySlug = (updatable + listOfNotNull(localApp(SELF_SLUG))).associateBy { it.slug }
+        val apps = order.mapNotNull { bySlug[it] }
+        app.scope.launch {
+            coordinator.updateAll(apps)
+            if (coordinator.progress.value.values.any { it == InstallProgress.NeedsPermission }) afterPermission = { updateSelfLast() }
         }
     }
 

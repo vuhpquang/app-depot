@@ -64,6 +64,10 @@
     <string name="chip_not_installable">Not installable here</string>
     <string name="chip_self_updates">Updates itself</string>
     <string name="progress_queued">Waiting…</string>
+    <plurals name="progress_waiting_for_others">
+        <item quantity="one">Updating %1$d other app first</item>
+        <item quantity="other">Updating %1$d other apps first</item>
+    </plurals>
     <string name="progress_downloading">Downloading… %1$d%%</string>
     <string name="progress_verifying">Checking the download…</string>
     <string name="progress_installing">Installing…</string>

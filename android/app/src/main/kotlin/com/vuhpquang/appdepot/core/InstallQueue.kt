@@ -46,6 +46,25 @@ fun safeFileSegment(s: String): String = s.replace(Regex("[^0-9A-Za-z._-]"), "_"
 fun orderForUpdateAll(slugs: List<String>, selfSlug: String = SELF_SLUG): List<String> =
     slugs.filter { it != selfSlug } + slugs.filter { it == selfSlug }
 
+/** True while [p] is an install of some app that has not finished: queued, running or waiting on the user. */
+fun isActive(p: InstallProgress?): Boolean = when (p) {
+    InstallProgress.Queued, is InstallProgress.Downloading, InstallProgress.Verifying,
+    InstallProgress.Installing, InstallProgress.NeedsUserAction -> true
+    else -> false
+}
+
+/** How many apps other than App Depot still have an install ahead of it. */
+fun othersInFlight(progress: Map<String, InstallProgress>, selfSlug: String = SELF_SLUG): Int =
+    progress.count { (slug, p) -> slug != selfSlug && isActive(p) }
+
+/** App Depot installs itself only when no other app is mid-install: its install restarts the process. */
+fun selfMayStart(progress: Map<String, InstallProgress>, selfSlug: String = SELF_SLUG): Boolean =
+    othersInFlight(progress, selfSlug) == 0
+
+/** What to run when App Depot is asked to update: the other [updatable] apps in order, App Depot last. */
+fun planSelfUpdate(updatable: List<String>, selfSlug: String = SELF_SLUG): List<String> =
+    updatable.filter { it != selfSlug }.distinct() + selfSlug
+
 fun outcomeProgress(o: InstallOutcome): InstallProgress = when (o) {
     is InstallOutcome.Success -> InstallProgress.Done(o.version)
     is InstallOutcome.Failed -> InstallProgress.Failed(o.message)

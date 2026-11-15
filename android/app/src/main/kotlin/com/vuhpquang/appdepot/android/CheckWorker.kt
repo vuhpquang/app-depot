@@ -12,6 +12,7 @@ import com.vuhpquang.appdepot.core.SELF_SLUG
 import com.vuhpquang.appdepot.core.localApps
 import com.vuhpquang.appdepot.core.planBackground
 import com.vuhpquang.appdepot.core.planFor
+import com.vuhpquang.appdepot.core.selfMayStart
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -68,9 +69,10 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val needsYou = LinkedHashMap<String, String>() // slug -> version, installs that need the user
         // Self goes last and alone: its install restarts the process, so everything else is saved first.
         val selfWanted = SELF_SLUG in plan.install
-        val deferSelf = selfWanted && app.foreground // never restart the app under the user's hands
         val others = plan.install.filter { it != SELF_SLUG }
         if (others.isNotEmpty()) installSilently(app, others.map { bySlug.getValue(it) }, newFailed, needsYou, next)
+        // Never restart the app under the user's hands, and never while another install is still running or waiting.
+        val deferSelf = selfWanted && (app.foreground || !selfMayStart(app.coordinator.progress.value))
 
         val posted = Notifications.updatesAvailable(app, plan.announce.map { bySlug.getValue(it).name })
         val saveTold = plan.notified.toMutableMap()
@@ -104,7 +106,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         app: AppDepotApplication, apps: List<CatalogApp>, failed: MutableMap<String, String>,
         needsYou: MutableMap<String, String>, next: Map<String, AppState>,
     ) {
-        val outcomes = app.coordinator.updateAll(apps, interactive = false)
+        val outcomes = app.coordinator.updateAll(apps, interactive = false, waitForOthers = false)
         for (a in apps) {
             val version = (next[a.slug] as? AppState.UpdateAvailable)?.latest?.version
             when (val o = outcomes[a.slug]) {

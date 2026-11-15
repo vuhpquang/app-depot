@@ -101,4 +101,14 @@ class HomeStateTest {
             parsePretendVersions("zentask-android=0.0.1\n\n# comment\n wiki = 1.2 \nbroken\n=1\n"),
         )
     }
+
+    @Test fun queuedWithOthersFirstShowsWaitingForOthers() {
+        val m = cardModel(AppState.UpdateAvailable("0.15.1", rel), InstallProgress.Queued, othersFirst = 2)
+        assertEquals(CardActivity.WaitingForOthers(2), m.activity)
+        assertNull(m.action)
+    }
+
+    @Test fun queuedWithNoOthersStaysQueued() {
+        assertEquals(CardActivity.Queued, cardModel(AppState.UpdateAvailable("0.15.1", rel), InstallProgress.Queued, othersFirst = 0).activity)
+    }
 }
