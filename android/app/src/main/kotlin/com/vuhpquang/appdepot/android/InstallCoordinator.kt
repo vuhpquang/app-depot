@@ -37,10 +37,13 @@ class InstallCoordinator(
     private val lock = Mutex()
     private val _progress = MutableStateFlow<Map<String, InstallProgress>>(emptyMap())
     val progress: StateFlow<Map<String, InstallProgress>> = _progress.asStateFlow()
+    // Written only while holding [lock], so there is at most one install in flight and one current slug.
     @Volatile private var currentSlug: String? = null
 
     init {
+        File(context.cacheDir, "downloads").listFiles()?.forEach { it.delete() }
         installer.onPendingUserAction = { currentSlug?.let { set(it, InstallProgress.NeedsUserAction) } }
+        installer.onConfirmLaunched = { currentSlug?.let { set(it, InstallProgress.Installing) } }
     }
 
     private fun set(slug: String, p: InstallProgress) = _progress.update { it + (slug to p) }
@@ -53,7 +56,12 @@ class InstallCoordinator(
     }
 
     suspend fun updateAll(apps: List<CatalogApp>) {
-        lock.withLock { runInstallQueue(apps, { a -> runOne(a) }) { slug, p -> set(slug, p) } }
+        try {
+            lock.withLock { runInstallQueue(apps, { a -> runOne(a) }) { slug, p -> set(slug, p) } }
+        } catch (e: CancellationException) {
+            _progress.update { m -> m.filterValues { it != InstallProgress.Queued } }
+            throw e
+        }
     }
 
     private suspend fun runOne(app: CatalogApp): InstallOutcome {
@@ -88,7 +96,7 @@ class InstallCoordinator(
                 return finish(app, fromVersion, InstallOutcome.Failed("This file isn't signed like ${app.name}. It wasn't installed."))
             }
             set(app.slug, InstallProgress.Installing)
-            val outcome = when (val o = installer.install(file, app.appId, app.name) { }) {
+            val outcome = when (val o = installer.install(file, app.appId, app.name)) {
                 is InstallOutcome.Success -> InstallOutcome.Success(release.version)
                 else -> o
             }

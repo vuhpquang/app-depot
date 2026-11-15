@@ -41,4 +41,16 @@ class InstallQueueTest {
         assertEquals(listOf("a"), ran)
         assertEquals(InstallProgress.NeedsPermission, events.last { it.first == "b" }.second)
     }
+
+    @Test fun unconfirmedInstallFailsAndQueueKeepsMoving() = runTest {
+        val ran = mutableListOf<String>()
+        val installer = Installer { a ->
+            ran += a.slug
+            if (a.slug == "a") InstallOutcome.Failed("The install wasn't confirmed. Try again.") else InstallOutcome.Success("2")
+        }
+        val results = runInstallQueue(listOf(app("a"), app("b")), installer) { _, _ -> }
+        assertEquals(listOf("a", "b"), ran)
+        assertEquals(InstallOutcome.Failed("The install wasn't confirmed. Try again."), results["a"])
+        assertEquals(InstallOutcome.Success("2"), results["b"])
+    }
 }
