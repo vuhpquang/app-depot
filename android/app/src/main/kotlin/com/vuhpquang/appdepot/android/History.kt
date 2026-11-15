@@ -15,5 +15,15 @@ class History(context: Context, private val onRecorded: () -> Unit = {}) : Event
         onRecorded()
     }
 
+    /**
+     * A `check` row only when it says something new: repeated identical checks collapse into one.
+     * `depot_started` rows (hidden telemetry, one per launch) don't count as "something in between".
+     */
+    fun recordCheck(message: String) {
+        val last = recent(20).firstOrNull { it.type != "depot_started" }
+        if (last != null && last.type == "check" && last.message == message) return
+        record(DepotEvent("check", message = message))
+    }
+
     fun recent(limit: Int = 200, appSlug: String? = null): List<HistoryRow> = db.recent(limit, appSlug)
 }

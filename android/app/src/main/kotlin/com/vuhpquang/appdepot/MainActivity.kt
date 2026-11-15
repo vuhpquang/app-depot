@@ -1,6 +1,10 @@
 package com.vuhpquang.appdepot
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -33,8 +37,12 @@ import com.vuhpquang.appdepot.ui.theme.AppDepotTheme
 class MainActivity : ComponentActivity() {
     private val vm: AppDepotViewModel by viewModels()
 
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* denied: checks still run, just silently */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        askForNotificationsOnce()
         enableEdgeToEdge()
         setContent {
             AppDepotTheme {
@@ -66,6 +74,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun askForNotificationsOnce() {
+        val settings = (application as AppDepotApplication).settings
+        if (settings.notificationsAsked) return
+        settings.notificationsAsked = true
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

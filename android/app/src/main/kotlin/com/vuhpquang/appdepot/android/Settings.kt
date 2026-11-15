@@ -26,6 +26,17 @@ class Settings(context: Context) {
         get() = prefs.getString(KEY_LAST_SEEN, null)
         set(v) = prefs.edit().putString(KEY_LAST_SEEN, v).apply()
 
+    /** The one-time notification permission prompt has been shown. */
+    var notificationsAsked: Boolean
+        get() = prefs.getBoolean(KEY_NOTIF_ASKED, false)
+        set(v) = prefs.edit().putBoolean(KEY_NOTIF_ASKED, v).apply()
+
+    /** Background checks: slug -> latest version the user was already told about (survives process death). */
+    var backgroundNotified: Map<String, String>
+        get() = prefs.getString(KEY_BG_NOTIFIED, null)?.lineSequence()
+            ?.mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }?.toMap() ?: emptyMap()
+        set(v) = prefs.edit().putString(KEY_BG_NOTIFIED, v.entries.joinToString("\n") { "${it.key}=${it.value}" }).apply()
+
     /** Debug builds only: catalog + device API server; null = [DEPOT_BASE_URL]. */
     var serverUrl: String?
         get() = prefs.getString(KEY_SERVER_URL, null)
@@ -36,6 +47,8 @@ class Settings(context: Context) {
         const val KEY_AUTO_INSTALL = "appdepot.updates.autoInstall"
         const val KEY_LAST_CHECKED = "appdepot.updates.lastChecked"
         const val KEY_LAST_SEEN = "appdepot.whatsNew.lastSeenVersion"
+        const val KEY_NOTIF_ASKED = "appdepot.notifications.asked"
+        const val KEY_BG_NOTIFIED = "appdepot.background.notified"
         const val KEY_SERVER_URL = "appdepot.debug.serverUrl"
     }
 }

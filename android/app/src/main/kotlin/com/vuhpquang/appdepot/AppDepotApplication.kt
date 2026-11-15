@@ -2,6 +2,7 @@ package com.vuhpquang.appdepot
 
 import android.app.Application
 import android.content.pm.ApplicationInfo
+import com.vuhpquang.appdepot.android.BackgroundScheduler
 import com.vuhpquang.appdepot.android.CatalogRepository
 import com.vuhpquang.appdepot.android.DEPOT_BASE_URL
 import com.vuhpquang.appdepot.android.DepotApi
@@ -13,10 +14,12 @@ import com.vuhpquang.appdepot.android.Pairing
 import com.vuhpquang.appdepot.android.Settings
 import com.vuhpquang.appdepot.core.DepotEvent
 import com.vuhpquang.appdepot.core.SELF_SLUG
+import com.vuhpquang.appdepot.ui.parsePretendVersions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 
 class AppDepotApplication : Application() {
     /** Outlives every screen: installs and refreshes started from the UI run here. */
@@ -47,8 +50,16 @@ class AppDepotApplication : Application() {
     /** Process-wide: installs outlive any screen. */
     val coordinator: InstallCoordinator by lazy { InstallCoordinator(this, history, installedApps) }
 
+    /** Debug builds only: files/pretend.txt lines `slug=version` override an installed version. */
+    fun readPretend(): Map<String, String> {
+        if (!isDebuggable) return emptyMap()
+        val f = File(filesDir, "pretend.txt")
+        return if (f.exists()) runCatching { parsePretendVersions(f.readText()) }.getOrDefault(emptyMap()) else emptyMap()
+    }
+
     override fun onCreate() {
         super.onCreate()
+        if (settings.autoCheck) BackgroundScheduler.schedule(this)
         scope.launch {
             // The process dies during a self-update, so the coordinator can't record it: detect it here.
             val state = getSharedPreferences("appdepot.state", MODE_PRIVATE)

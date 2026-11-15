@@ -7,6 +7,7 @@ import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vuhpquang.appdepot.AppDepotApplication
+import com.vuhpquang.appdepot.android.BackgroundScheduler
 import com.vuhpquang.appdepot.android.HistoryRow
 import com.vuhpquang.appdepot.core.AppState
 import com.vuhpquang.appdepot.core.CatalogApp
@@ -30,7 +31,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import android.provider.Settings as SystemSettings
 
 data class AppRow(
@@ -164,7 +164,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
                     val versions = installed.value
                     val n = apps.count { planFor(it, versions[it.slug]) is AppState.UpdateAvailable }
                     withContext(Dispatchers.IO) {
-                        recordCheck(if (n == 1) "1 update" else "$n updates")
+                        app.history.recordCheck(if (n == 1) "1 update" else "$n updates")
                         app.uploader.flush()
                     }
                     maybeShowWhatsNew()
@@ -178,16 +178,6 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
                 loadHistory()
             }
         }
-    }
-
-    /**
-     * A `check` row only when it says something new: repeated identical checks collapse into one.
-     * `depot_started` rows (hidden telemetry, one per launch) don't count as "something in between".
-     */
-    private fun recordCheck(message: String) {
-        val last = app.history.recent(20).firstOrNull { it.type != "depot_started" }
-        if (last != null && last.type == "check" && last.message == message) return
-        app.history.record(DepotEvent("check", message = message))
     }
 
     /**
@@ -219,7 +209,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
 
     private suspend fun reloadInstalled() {
         val apps = catalog.value ?: return
-        val pretend = withContext(Dispatchers.IO) { readPretend() }
+        val pretend = withContext(Dispatchers.IO) { app.readPretend() }
         val versions = HashMap<String, String?>()
         val launch = HashSet<String>()
         withContext(Dispatchers.IO) {
@@ -232,13 +222,6 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         }
         installed.value = versions
         launchable.value = launch
-    }
-
-    /** Debug builds only: files/pretend.txt lines `slug=version` override an installed version. */
-    private fun readPretend(): Map<String, String> {
-        if (!isDebuggable) return emptyMap()
-        val f = File(app.filesDir, "pretend.txt")
-        return if (f.exists()) runCatching { parsePretendVersions(f.readText()) }.getOrDefault(emptyMap()) else emptyMap()
     }
 
     // --- Installs ------------------------------------------------------------------------------
@@ -304,6 +287,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
 
     fun setAutoCheck(on: Boolean) {
         settings.autoCheck = on
+        if (on) BackgroundScheduler.schedule(app) else BackgroundScheduler.cancel(app)
         _settings.update { it.copy(autoCheck = on) }
     }
 
