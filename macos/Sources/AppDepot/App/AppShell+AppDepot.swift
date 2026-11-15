@@ -15,6 +15,7 @@ extension AppIdentity {
             accent: Theme.accent,
             whatsNew: .automatic
         )
+        app.updateSourceDescription = "Updates come from the App Depot catalog on vuhpquang.com."
         app.tagPrefix = "macos-v"   // one repo, two platforms: tags are macos-vX.Y.Z / android-vX.Y.Z
         return app
     }()

@@ -16,12 +16,9 @@ final class IconCache {
 
     init(dir: URL = DepotPaths.iconCache) { self.dir = dir }
 
-    func image(for url: String?) -> NSImage? {
-        guard let url else { return nil }
-        if let img = images[url] { return img }
-        load(url)
-        return nil
-    }
+    /// A pure read: views call this from `body`, so it must not change state (loading is `load`, started
+    /// from `.task`; mutating observed state during a view update dropped some rows' icons).
+    func image(for url: String?) -> NSImage? { url.flatMap { images[$0] } }
 
     func load(_ url: String) {
         guard !loading.contains(url), images[url] == nil else { return }
@@ -60,10 +57,19 @@ struct AppIconView: View {
     let app: CatalogApp
     let size: CGFloat
     @Environment(IconCache.self) private var icons
+    @Environment(DepotModel.self) private var depot
+
+    private var source: IconSource {
+        iconSource(installedPath: depot.installedURLs[app.slug]?.path.nilUnlessExists, catalogURL: app.iconUrl)
+    }
 
     var body: some View {
+        let source = source
         Group {
-            if let img = icons.image(for: app.iconUrl) {
+            if case let .installed(path) = source {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: path)).resizable().interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+            } else if case let .catalog(url) = source, let img = icons.image(for: url) {
                 Image(nsImage: img).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
             } else {
                 RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
@@ -77,6 +83,11 @@ struct AppIconView: View {
             }
         }
         .frame(width: size, height: size)
+        .task(id: source) { if case let .catalog(url) = source { icons.load(url) } }
         .accessibilityHidden(true)
     }
+}
+
+private extension String {
+    var nilUnlessExists: String? { FileManager.default.fileExists(atPath: self) ? self : nil }
 }

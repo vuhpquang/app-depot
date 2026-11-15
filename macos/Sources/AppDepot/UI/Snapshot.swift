@@ -17,7 +17,7 @@ enum Snapshot {
         let model = env.model
         let apps = (try? CatalogParser.parse(Data(fixtureCatalog.utf8))) ?? []
         model.applySnapshot(apps: apps, installed: [
-            "padlet": "2.5.0", "launch-app": "1.5.0", "quickcast": "1.4.0", "wisp": "0.3.2",
+            "padlet": "2.5.0", "launch-app": "1.5.0", "quickcast": "1.4.0", "wisp": "0.3.3",
             "zentask-macos": "0.15.3", selfSlug: "0.1.0",
         ], skipped: ["quickcast": "1.4.1"], refreshError: nil)
         env.coordinator.showForSnapshot("launch-app", .downloading(percent: 42))

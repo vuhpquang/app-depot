@@ -84,5 +84,8 @@ scripts/depot-publish.sh app-depot-macos                    # from the hub, afte
   `appShell.updates.autoCheck/autoInstall`, `appdepot.ui.layout|sort`, `appdepot.skipped`, `appdepot.background.*`.
   Debug runs use the `com.vuhpquang.appdepot.debug` defaults domain and support folder; DEBUG
   `APPDEPOT_PRETEND=slug=version,…` fakes installed versions.
+- Rows: `versionLine` (DepotCore/CardModel.swift) is a tested label mapping; self-updating and local-build rows show
+  `Version X` and `· Latest Y` only when the catalog is newer. Icons: `iconSource` picks the installed app's own icon
+  (`NSWorkspace.icon(forFile:)`), else the catalog `iconUrl` via `IconCache` (loaded from `.task`, never in `body`).
 - Data: SQLite history (2000) + outbox (1000) in Application Support; pairing token in the Keychain
   (`com.vuhpquang.appdepot.pairing`; debug builds keep it in their defaults domain).

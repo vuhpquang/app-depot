@@ -50,16 +50,6 @@ struct ChipView: View {
     }
 }
 
-/// "Installed 1.4.0 · Latest 1.5.1" style line.
-func versionLine(_ m: CardModel) -> String {
-    switch (m.installed, m.latest) {
-    case let (i?, l?) where i != l: return "\(i) → \(l)"
-    case let (i?, _): return "Version \(i)"
-    case let (nil, l?): return "Latest \(l)"
-    default: return ""
-    }
-}
-
 extension CardActivity {
     var title: String {
         switch self {

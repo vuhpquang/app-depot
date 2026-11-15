@@ -16,6 +16,12 @@ public struct CardModel: Equatable, Sendable {
     public var action: CardAction?
     public var activity: CardActivity?
     public var error: String?
+
+    public init(chip: CardChip? = nil, installed: String? = nil, latest: String? = nil, action: CardAction? = nil,
+                activity: CardActivity? = nil, error: String? = nil) {
+        self.chip = chip; self.installed = installed; self.latest = latest
+        self.action = action; self.activity = activity; self.error = error
+    }
 }
 
 /// Pure mapping from the plan + the coordinator's progress to what a row shows.
@@ -44,4 +50,30 @@ public func cardModel(_ state: AppState, progress: InstallProgress?, canLaunch: 
     }
     if m.activity != nil { m.action = nil }
     return m
+}
+
+/// The version text under a row's name. Apps App Depot doesn't install (self-updating, local builds) show
+/// their own version and mention the catalog's only when it is newer; an arrow would read as a downgrade
+/// when the installed copy is ahead of the catalog.
+public func versionLine(_ m: CardModel) -> String {
+    switch (m.installed, m.latest) {
+    case let (i?, l?) where m.chip == .selfUpdates || m.chip == .localBuild:
+        return Versions.compare(l, i) > 0 ? "Version \(i) · Latest \(l)" : "Version \(i)"
+    case let (i?, l?) where i != l: return "\(i) → \(l)"
+    case let (i?, _): return "Version \(i)"
+    case let (nil, l?): return "Latest \(l)"
+    default: return ""
+    }
+}
+
+/// Where a row's icon comes from.
+public enum IconSource: Equatable, Sendable {
+    case installed(path: String), catalog(url: String), none
+}
+
+/// The installed app's own icon wins; the catalog icon is for apps that aren't installed.
+public func iconSource(installedPath: String?, catalogURL: String?) -> IconSource {
+    if let installedPath { return .installed(path: installedPath) }
+    if let catalogURL { return .catalog(url: catalogURL) }
+    return .none
 }
