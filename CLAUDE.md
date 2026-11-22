@@ -4,6 +4,7 @@ Installs and updates the owner's apps from the live catalog (`GET /api/depot/cat
 portfolio). Phase 2 = Android app in `android/`; phase 3 = macOS app (SwiftUI).
 
 - Specs/plans: `docs/superpowers/specs/2026-11-15-app-depot-design.md`, `docs/superpowers/plans/`.
+- Design system: `DESIGN.md` (look, tokens, components, render recipe, known gaps). Read it before UI work.
 - Gradle project in `android/`, module `:app`, package `com.vuhpquang.appdepot` (debug suffix `.dev`).
   Run Gradle there with `JAVA_HOME=/Users/quangvu/Library/Java/JavaVirtualMachines/corretto-17.0.13/Contents/Home`.
 - Version = `android/VERSION`; `versionCode = a*10000 + b*100 + c` (in `app/build.gradle.kts` and
