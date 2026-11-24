@@ -17,6 +17,10 @@ export JAVA_HOME=/Users/quangvu/Library/Java/JavaVirtualMachines/corretto-17.0.1
 Release builds are signed with the key in `~/.config/app-depot-signing/` (create it once with
 `android/scripts/make-keystore.sh`); without it release falls back to the debug key.
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
 ---
 
 Made by Ha Phung Quang Vu · [vuhpquang.com](https://vuhpquang.com) ·
