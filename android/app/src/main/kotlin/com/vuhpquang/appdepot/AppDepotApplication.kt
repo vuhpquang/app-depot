@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.pm.ApplicationInfo
 import com.vuhpquang.appdepot.android.BackgroundScheduler
 import com.vuhpquang.appdepot.android.CatalogRepository
+import com.vuhpquang.appdepot.android.DownloadNotifier
 import com.vuhpquang.appdepot.android.DEPOT_BASE_URL
 import com.vuhpquang.appdepot.android.DepotApi
 import com.vuhpquang.appdepot.android.EventUploader
@@ -68,6 +69,7 @@ class AppDepotApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (settings.autoCheck) BackgroundScheduler.schedule(this)
+        DownloadNotifier(this) { catalog.cached() }.start(scope, coordinator.progress)
         scope.launch {
             // The process dies during a self-update, so the coordinator can't record it: detect it here.
             val state = getSharedPreferences("appdepot.state", MODE_PRIVATE)

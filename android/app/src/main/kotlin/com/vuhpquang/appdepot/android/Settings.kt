@@ -63,6 +63,11 @@ class Settings(context: Context) {
         get() = prefs.getString(KEY_PLATFORM_FILTER, null)
         set(v) = prefs.edit().putString(KEY_PLATFORM_FILTER, v).apply()
 
+    /** Material You colours from the wallpaper instead of depot green. Default off. */
+    var dynamicColor: Boolean
+        get() = prefs.getBoolean(KEY_DYNAMIC_COLOR, false)
+        set(v) = prefs.edit().putBoolean(KEY_DYNAMIC_COLOR, v).apply()
+
     private fun readMap(key: String): Map<String, String> = parseSlugMap(prefs.getString(key, null))
 
     private fun writeMap(key: String, v: Map<String, String>) = prefs.edit().putString(key, formatSlugMap(v)).apply()
@@ -85,5 +90,6 @@ class Settings(context: Context) {
         const val KEY_LAYOUT = "appdepot.ui.layout"
         const val KEY_SORT = "appdepot.ui.sort"
         const val KEY_PLATFORM_FILTER = "appdepot.ui.platformFilter"
+        const val KEY_DYNAMIC_COLOR = "appdepot.ui.dynamicColor"
     }
 }

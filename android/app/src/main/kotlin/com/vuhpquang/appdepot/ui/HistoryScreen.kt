@@ -1,5 +1,15 @@
 package com.vuhpquang.appdepot.ui
 
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.remember
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.vuhpquang.appdepot.ui.components.ConnectedSurface
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,13 +45,19 @@ import com.vuhpquang.appdepot.R
 import com.vuhpquang.appdepot.android.HistoryRow
 import com.vuhpquang.appdepot.ui.theme.DepotTokens
 
+/** History (Material 3 Expressive): a collapsing medium bar, one connected group per day. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(vm: AppDepotViewModel, onBack: () -> Unit) {
     val rows by vm.history.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.loadHistory() }
     // "started" is telemetry for the dashboard, not something to read here.
     val visible = rows.filter { it.type != "depot_started" }
-    Scaffold(topBar = { BackTopBar(stringResource(R.string.history_title), onBack) }) { padding ->
+    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    Scaffold(
+        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
+        topBar = { BackTopBar(stringResource(R.string.history_title), onBack, scroll) },
+    ) { padding ->
         if (visible.isEmpty()) {
             Text(
                 stringResource(R.string.history_empty),
@@ -51,17 +67,39 @@ fun HistoryScreen(vm: AppDepotViewModel, onBack: () -> Unit) {
             )
             return@Scaffold
         }
+        val zone = ZoneId.systemDefault()
+        val days = remember(visible) { historyDays(visible, zone) }
+        val today = LocalDate.now(zone)
         LazyColumn(
             Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = DepotTokens.SpaceMd, vertical = DepotTokens.SpaceSm),
+            contentPadding = PaddingValues(start = DepotTokens.SpaceMd, end = DepotTokens.SpaceMd, bottom = DepotTokens.SpaceXl),
+            verticalArrangement = Arrangement.spacedBy(DepotTokens.GroupGap),
         ) {
-            items(visible, key = { it.id }) { HistoryItem(it, vm) }
+            days.forEach { d ->
+                item(key = "day-${d.day}") {
+                    Text(
+                        when (dayLabel(d.day, today)) {
+                            DayLabel.Today -> stringResource(R.string.history_today)
+                            DayLabel.Yesterday -> stringResource(R.string.history_yesterday)
+                            DayLabel.Date -> d.day.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = DepotTokens.SpaceMd, top = DepotTokens.SpaceMd, bottom = DepotTokens.SpaceSm),
+                    )
+                }
+                itemsIndexed(d.rows, key = { _, r -> r.id }) { i, r ->
+                    ConnectedSurface(groupPosition(i, d.rows.size), Modifier.animateItem()) {
+                        HistoryItem(r, vm, Modifier.padding(horizontal = DepotTokens.SpaceMd))
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-fun HistoryItem(row: HistoryRow, vm: AppDepotViewModel) {
+fun HistoryItem(row: HistoryRow, vm: AppDepotViewModel, modifier: Modifier = Modifier) {
     val failed = row.type == "install_failed" || row.type == "crash"
     val icon = when (row.type) {
         "install" -> Icons.Outlined.Download
@@ -100,7 +138,7 @@ fun HistoryItem(row: HistoryRow, vm: AppDepotViewModel) {
         add(time)
     }.joinToString(" · ")
     Row(
-        Modifier.fillMaxWidth().heightIn(min = DepotTokens.TouchMin).padding(vertical = DepotTokens.SpaceSm),
+        modifier.fillMaxWidth().heightIn(min = DepotTokens.TouchMin).padding(vertical = DepotTokens.SpaceMd - DepotTokens.SpaceXs),
         horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceMd),
         verticalAlignment = Alignment.Top,
     ) {

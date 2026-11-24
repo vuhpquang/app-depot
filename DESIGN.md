@@ -5,8 +5,8 @@ appearance: light+dark
 tokens: macos/Sources/AppDepot/DesignSystem/Theme.swift; android/app/src/main/kotlin/com/vuhpquang/appdepot/ui/theme/Theme.kt
 design_doc: docs/superpowers/specs/2026-11-15-app-depot-design.md
 dials:
-  variance: 2              # a stock sidebar/detail Mac app and a stock Material 3 Android app
-  motion: 1                # progress bars and system transitions only
+  variance: 3              # Mac: stock sidebar/detail. Android: Material 3 Expressive "Update Stage" (~4)
+  motion: 2                # Mac: progress bars only. Android: Expressive motion scheme, morphing buttons, wavy progress (~4)
   density: 5               # list rows with icon, chip and version line; a roomier grid layout
 fonts: system
 accent: "#2E7D5B / #6FCF9F"
@@ -22,8 +22,15 @@ all, layout, sort, history, refresh), and a menu bar extra that is an ordinary m
 its **own icon**, name, a **state chip** (Update available, Up to date, Skipped, Updates itself, No
 release yet, Not for Mac) and a version line; the detail shows the release notes as "What's New".
 The only colour of its own is **depot green** (`#2E7D5B` light / `#6FCF9F` dark): the accent, the
-"Update available" chip and the grid selection ring. Android is the same app in Material 3, green
-primary, dynamic colour off.
+"Update available" chip and the grid selection ring.
+
+**Android is Material 3 Expressive** (2026-11-24, Compose Material3 1.5.0, direction "Update Stage",
+spec `docs/superpowers/specs/2026-11-24-android-m3-expressive-design.md`): a large flexible app bar
+that says the state ("2 updates · Ready to install"), connected toggle buttons for the platform
+filter, a **stage** hero card (primaryContainer, 40 dp corners) holding every pending update and a
+big shape-morphing Update all, then connected groups. Depot green by default with bolder containers;
+wallpaper colours (Material You) only when Settings → Appearance → "Use wallpaper colours" is on
+(`appdepot.ui.dynamicColor`, off by default).
 
 Load-bearing ideas:
 
@@ -48,7 +55,8 @@ Load-bearing ideas:
 | Role | Value | Where |
 |---|---|---|
 | Accent | depot green `#2E7D5B` light / `#6FCF9F` dark (dynamic `NSColor`) | `Theme.accent`; Android `GreenLight/GreenDark` |
-| Android scheme | primaryContainer `#D3EEDF`, secondary `#4D6357`, tertiary `#8A5A00`, … | `ui/theme/Theme.kt` |
+| Android scheme | primaryContainer `#A6EFC8` / dark `#005234`, secondary `#4D6357`, tertiary `#8A5A00`, …; dynamic scheme when the setting is on | `ui/theme/Theme.kt` |
+| Android shapes | Expressive scale 8/12/16/24/32; connected groups outer 28 / inner 6 / gap 2; stage 40; hero backdrop `MaterialShapes.SoftBurst` 148, About `Cookie9Sided` 112 | `DepotTokens`, `ui/components/Expressive.kt` |
 | Spacing | xxs 2 · xs 4 · s 8 · m 12 · l 16 · xl 24 · xxl 32 | `Theme.Spacing` |
 | Radii | chip 6, icon 12, card 16 | `Theme.Radius` |
 | Sizes | row icon 40, grid icon 64, detail icon 80, grid card 176 × 196, sidebar min 320, window min 760 × 520, QR 200 | `Theme.Size` |
@@ -74,8 +82,22 @@ Mac (`macos/Sources/AppDepot/UI/`):
 - `RemoteActionView`, `SendToPhoneSheet` (QR + Copy link), `HistoryView`, `MenuBarView`, Settings
   panes inside app-shell's `SettingsShell`.
 
-Android (`android/app/.../ui/`): home list/grid cards (`cardModel`), product list with "Other
-platforms", detail page, settings, update notifications.
+Android (`android/app/.../ui/`), Material 3 Expressive:
+
+- `UpdateStage` — hero card on Home with each pending update (icon, `0.9.2 → 0.9.3 · 57 MB`, its own
+  wavy progress) and Update all ("Update · 57 MB" when only one); `stageSplit` (pure, `StageTest`) keeps
+  those apps out of the list below.
+- `AppCard` (one link of a connected group, `groupPosition`), `AppGridCard` (extra-large tile),
+  `ActionButton` (Expressive button shapes, cross-fades between Install/Update/Open), pill `StatusChip`.
+- `DepotProgress` — `LinearWavyProgressIndicator`, determinate while downloading.
+- Detail: soft-burst hero, `SplitButtonLayout` (Update / Install / Open + menu: Skip, Uninstall, Share,
+  Release page), facts row (Installed · Latest · Download), What's New card, history as a connected list.
+- History grouped by day (`historyDays`, `dayLabel`), Settings sections as connected groups with
+  check-icon switches; `MediumFlexibleTopAppBar` on both.
+- Install notification (`android/DownloadNotifier.kt`, model `core/DownloadNotice.kt`, `DownloadNoticeTest`):
+  one per batch; Android 16+ = segmented `ProgressStyle` (a segment per app, the app's icon as the
+  tracker) promoted as a Live Update with a "42%" chip; older = classic progress bar. Channel `installs`
+  (default importance, silent).
 
 ## 6. Layout and density
 
@@ -90,8 +112,12 @@ System only: the window's sidebar material, toolbar glass on macOS 26, cards on
 
 ## 8. Motion
 
-Next to none: install progress bars, system list/navigation transitions, the 0.15 s quick duration.
-Nothing decorative to switch off.
+Mac: next to none — install progress bars, system list/navigation transitions, the 0.15 s quick duration.
+
+Android: `MotionScheme.expressive()` springs — button corners morph on press, list items animate in
+and out (`animateItem`: an updated app leaves the stage), the stage resizes, the split button's chevron
+turns, wavy progress. All motion carries meaning; nothing loops for decoration. Compose honours the
+system "Remove animations" setting (animator duration scale), the single switch.
 
 ## 9. States
 
@@ -131,7 +157,9 @@ Android: build the debug APK in `android/` (Corretto 17), install the `.dev` bui
 
 ## 12. Known gaps
 
-- **Render not verified: Android** (no emulator run in this pass).
+- Android renders verified on the API 37.1 emulator on 2026-11-24 (Home list/grid, detail, Settings,
+  History, light/dark, dynamic colour, the Live Update notification). The status-bar "42%" chip itself
+  was not captured.
 - Offscreen Mac renders show list titles in the inactive-window grey; check active colours on a live
   debug build.
 - The Mac app has no animation of its own, so no Reduce Motion handling is needed yet; add one through

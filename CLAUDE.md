@@ -10,7 +10,13 @@ portfolio). Phase 2 = Android app in `android/`; phase 3 = macOS app (SwiftUI).
 - Version = `android/VERSION`; `versionCode = a*10000 + b*100 + c` (in `app/build.gradle.kts` and
   `core/VersionCode.kt`; keep both in sync).
 - Release key: `~/.config/app-depot-signing/` (`android/scripts/make-keystore.sh`). Never commit or print it.
-- Design tokens: `ui/theme/Theme.kt` (depot green `#2E7D5B` / `#6FCF9F`, dynamic colour off).
+- Design tokens: `ui/theme/Theme.kt` (depot green `#2E7D5B` / `#6FCF9F`). Material 3 Expressive since 2026-11-24
+  (`MaterialExpressiveTheme`, Compose BOM `2026.11.01` = material3 1.5.0, which needs **compileSdk 37.2**:
+  `sdkmanager "platforms;android-37.2"`). Wallpaper colours only with `appdepot.ui.dynamicColor` (Settings →
+  Appearance, off by default). Pure Expressive layout logic: `ui/Stage.kt` (`StageTest`).
+- Install notification: `android/DownloadNotifier.kt` follows `InstallCoordinator.progress` through
+  `core/DownloadBatch` (`DownloadNoticeTest`); channel `installs`; Live Update (`setRequestPromotedOngoing`,
+  API 36.1+, permission `POST_PROMOTED_NOTIFICATIONS`).
 - Tags `android-vX.Y.Z`, GitHub releases not marked Latest, asset `AppDepot-X.Y.Z-android.apk`.
 - Author/About strings follow the hub's `.claude/rules/app-shell.md`.
 - UI: `ui/` (Compose + navigation-compose; `AppDepotViewModel` is the one state holder). Card states are a

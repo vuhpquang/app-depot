@@ -1,15 +1,24 @@
 package com.vuhpquang.appdepot.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-/** Design tokens. Dynamic colour is off on purpose: App Depot has its own depot-green accent. */
+/**
+ * Design tokens. Material 3 Expressive (2026-11-24 redesign, "Update Stage"): depot green by default,
+ * wallpaper colours only when the user turns on Settings → Appearance (`appdepot.ui.dynamicColor`).
+ */
 object DepotTokens {
     val GreenLight = Color(0xFF2E7D5B)
     val GreenDark = Color(0xFF6FCF9F)
@@ -23,6 +32,19 @@ object DepotTokens {
     val RadiusSm = 8.dp
     val RadiusMd = 12.dp
     val RadiusLg = 20.dp
+
+    /** Connected groups: large outer corners, small inner ones, a hairline gap between cards. */
+    val RadiusGroupOuter = 28.dp
+    val RadiusGroupInner = 6.dp
+    val GroupGap = 2.dp
+
+    /** The Update Stage hero card on Home. */
+    val RadiusStage = 40.dp
+
+    /** Detail hero: the app icon on a shaped backdrop. */
+    val IconHero = 96.dp
+    val HeroBackdrop = 148.dp
+    val IconAboutBackdrop = 112.dp
 
     /** App icon on a card / in the detail header / in About. */
     val IconCard = 48.dp
@@ -42,6 +64,9 @@ object DepotTokens {
     val IconSmall = 18.dp
     val ProgressHeight = 4.dp
 
+    /** Wavy progress bar (amplitude needs room). */
+    val WavyHeight = 10.dp
+
     /** Outline of platform badges. */
     val Hairline = 1.dp
 
@@ -53,13 +78,13 @@ object DepotTokens {
 private val LightColors: ColorScheme = lightColorScheme(
     primary = DepotTokens.GreenLight,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD3EEDF),
-    onPrimaryContainer = Color(0xFF0B3A27),
+    primaryContainer = Color(0xFFA6EFC8),
+    onPrimaryContainer = Color(0xFF00391F),
     inversePrimary = DepotTokens.GreenDark,
     secondary = Color(0xFF4D6357),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD0E8DA),
-    onSecondaryContainer = Color(0xFF0A1F14),
+    secondaryContainer = Color(0xFFCDEBD9),
+    onSecondaryContainer = Color(0xFF0A2A1A),
     tertiary = Color(0xFF8A5A00),
     onTertiary = Color.White,
     tertiaryContainer = Color(0xFFFFDDB0),
@@ -87,8 +112,8 @@ private val LightColors: ColorScheme = lightColorScheme(
 private val DarkColors: ColorScheme = darkColorScheme(
     primary = DepotTokens.GreenDark,
     onPrimary = Color(0xFF003824),
-    primaryContainer = Color(0xFF1B5A40),
-    onPrimaryContainer = Color(0xFFD3EEDF),
+    primaryContainer = Color(0xFF005234),
+    onPrimaryContainer = Color(0xFFA6EFC8),
     inversePrimary = DepotTokens.GreenLight,
     secondary = Color(0xFFB4CCBD),
     onSecondary = Color(0xFF1F352A),
@@ -118,7 +143,32 @@ private val DarkColors: ColorScheme = darkColorScheme(
     surfaceContainerHighest = Color(0xFF313633),
 )
 
+/** Expressive corner scale: rounder than the baseline at every step. */
+private val DepotShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(32.dp),
+)
+
 @Composable
-fun AppDepotTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (darkTheme) DarkColors else LightColors, content = content)
+fun AppDepotTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    val colors = when {
+        dynamicColor && darkTheme -> dynamicDarkColorScheme(context)
+        dynamicColor -> dynamicLightColorScheme(context)
+        darkTheme -> DarkColors
+        else -> LightColors
+    }
+    MaterialExpressiveTheme(
+        colorScheme = colors,
+        motionScheme = MotionScheme.expressive(),
+        shapes = DepotShapes,
+        content = content,
+    )
 }

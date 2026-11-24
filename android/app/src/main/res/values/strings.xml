@@ -166,4 +166,33 @@
     <string name="platform_windows" translatable="false">Windows</string>
     <string name="platform_ios" translatable="false">iOS</string>
     <string name="platform_web" translatable="false">Web</string>
+    <!-- Material 3 Expressive redesign (2026-11-24) -->
+    <plurals name="stage_title">
+        <item quantity="one">%1$d update</item>
+        <item quantity="other">%1$d updates</item>
+    </plurals>
+    <string name="stage_subtitle_ready">Ready to install</string>
+    <string name="home_subtitle_current">Everything is up to date</string>
+    <string name="stage_version_size">%1$s → %2$s · %3$s</string>
+    <string name="stage_version">%1$s → %2$s</string>
+    <string name="section_this_phone">On this phone</string>
+    <string name="section_appearance">Appearance</string>
+    <string name="dynamic_color">Use wallpaper colours</string>
+    <string name="dynamic_color_summary">Material You colours from your wallpaper instead of depot green</string>
+    <string name="fact_installed">Installed</string>
+    <string name="fact_latest">Latest</string>
+    <string name="fact_size">Download</string>
+    <string name="action_more_actions">More actions</string>
+    <string name="history_today">Today</string>
+    <string name="history_yesterday">Yesterday</string>
+    <string name="channel_downloads">Downloads</string>
+    <string name="channel_downloads_desc">Progress while App Depot installs or updates apps</string>
+    <string name="notif_dl_queued">Waiting to update %1$s</string>
+    <string name="notif_dl_downloading">Downloading %1$s</string>
+    <string name="notif_dl_verifying">Checking %1$s</string>
+    <string name="notif_dl_installing">Installing %1$s</string>
+    <string name="notif_dl_confirm">Finish installing %1$s</string>
+    <string name="notif_dl_confirm_text">Confirm the install to continue</string>
+    <string name="notif_dl_batch">App %1$d of %2$d · %3$d%%</string>
+    <string name="notif_dl_percent">%1$d%%</string>
 </resources>

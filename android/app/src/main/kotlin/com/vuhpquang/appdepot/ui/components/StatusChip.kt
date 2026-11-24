@@ -2,7 +2,7 @@ package com.vuhpquang.appdepot.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,7 +36,7 @@ fun StatusChip(chip: CardChip, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.labelMedium,
         color = fg,
         modifier = modifier
-            .background(bg, RoundedCornerShape(DepotTokens.RadiusSm))
+            .background(bg, CircleShape)
             .padding(horizontal = DepotTokens.SpaceSm, vertical = DepotTokens.SpaceXs / 2),
     )
 }

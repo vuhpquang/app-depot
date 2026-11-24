@@ -4,7 +4,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,7 +39,7 @@ fun PlatformBadges(platforms: List<String>, local: String, modifier: Modifier = 
                 color = if (here) c.primary else c.onSurfaceVariant,
                 maxLines = 1,
                 modifier = Modifier
-                    .border(DepotTokens.Hairline, if (here) c.primary else c.outline, RoundedCornerShape(DepotTokens.RadiusSm))
+                    .border(DepotTokens.Hairline, if (here) c.primary else c.outline, CircleShape)
                     .padding(horizontal = DepotTokens.SpaceSm, vertical = DepotTokens.SpaceXs / 2),
             )
         }

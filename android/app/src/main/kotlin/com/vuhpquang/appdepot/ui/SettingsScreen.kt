@@ -1,5 +1,18 @@
 package com.vuhpquang.appdepot.ui
 
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.vuhpquang.appdepot.ui.components.AboutShape
+import com.vuhpquang.appdepot.ui.components.ConnectedSurface
+import com.vuhpquang.appdepot.ui.components.ShapeBackdrop
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -66,67 +79,83 @@ private const val AUTHOR_WEBSITE = "https://vuhpquang.com"
 private const val AUTHOR_GITHUB = "https://github.com/vuhpquang"
 private const val AUTHOR_LINKEDIN = "https://www.linkedin.com/in/vuhpquang/"
 
+/** Settings (Material 3 Expressive): a collapsing medium bar and each section as a connected group. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(vm: AppDepotViewModel, onBack: () -> Unit) {
     val s by vm.settingsUi.collectAsStateWithLifecycle()
     val home by vm.home.collectAsStateWithLifecycle()
-    Scaffold(topBar = { BackTopBar(stringResource(R.string.settings_title), onBack) }) { padding ->
+    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    Scaffold(
+        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
+        topBar = { BackTopBar(stringResource(R.string.settings_title), onBack, scroll) },
+    ) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
-                .padding(horizontal = DepotTokens.SpaceMd, vertical = DepotTokens.SpaceSm),
+                .padding(start = DepotTokens.SpaceMd, end = DepotTokens.SpaceMd, top = DepotTokens.SpaceSm, bottom = DepotTokens.SpaceXl),
             verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceLg),
         ) {
-            Section(stringResource(R.string.section_updates)) {
-                SwitchRow(stringResource(R.string.auto_check), stringResource(R.string.auto_check_summary), s.autoCheck, true, vm::setAutoCheck)
-                SwitchRow(
-                    stringResource(R.string.auto_install), stringResource(R.string.auto_install_summary),
-                    s.autoInstall && s.autoCheck, s.autoCheck, vm::setAutoInstall,
-                )
-                Row(
-                    Modifier.fillMaxWidth().padding(start = DepotTokens.SpaceMd, end = DepotTokens.SpaceSm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        if (s.lastChecked > 0) stringResource(R.string.last_checked, relativeTimeText(s.lastChecked))
-                        else stringResource(R.string.last_checked_never),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
+            Section(
+                stringResource(R.string.section_updates),
+                { SwitchRow(stringResource(R.string.auto_check), stringResource(R.string.auto_check_summary), s.autoCheck, true, vm::setAutoCheck) },
+                {
+                    SwitchRow(
+                        stringResource(R.string.auto_install), stringResource(R.string.auto_install_summary),
+                        s.autoInstall && s.autoCheck, s.autoCheck, vm::setAutoInstall,
                     )
-                    TextButton(vm::refresh, enabled = !home.refreshing, modifier = Modifier.heightIn(min = DepotTokens.TouchMin)) {
-                        Text(stringResource(R.string.check_now))
+                },
+                {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = DepotTokens.SpaceMd, end = DepotTokens.SpaceSm, top = DepotTokens.SpaceXs, bottom = DepotTokens.SpaceXs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (s.lastChecked > 0) stringResource(R.string.last_checked, relativeTimeText(s.lastChecked))
+                            else stringResource(R.string.last_checked_never),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(vm::refresh, enabled = !home.refreshing, modifier = Modifier.heightIn(min = DepotTokens.TouchMin)) {
+                            Text(stringResource(R.string.check_now))
+                        }
                     }
-                }
-            }
-            Section(stringResource(R.string.section_connection)) { ConnectionBlock(s, vm) }
-            Section(stringResource(R.string.section_about)) { AboutBlock(vm, home) }
-            s.serverUrl?.let { url -> Section(stringResource(R.string.section_debug)) { ServerBlock(url, vm) } }
+                },
+            )
+            Section(
+                stringResource(R.string.section_appearance),
+                { SwitchRow(stringResource(R.string.dynamic_color), stringResource(R.string.dynamic_color_summary), s.dynamicColor, true, vm::setDynamicColor) },
+            )
+            Section(stringResource(R.string.section_connection), { ConnectionBlock(s, vm) })
+            Section(stringResource(R.string.section_about), { AboutBlock(vm, home) })
+            s.serverUrl?.let { url -> Section(stringResource(R.string.section_debug), { ServerBlock(url, vm) }) }
         }
     }
 }
 
+/** A titled connected group: each row is its own card, outer corners large, inner ones small. */
 @Composable
-private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm)) {
+private fun Section(title: String, vararg rows: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(DepotTokens.GroupGap)) {
         Text(
             title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = DepotTokens.SpaceMd),
+            modifier = Modifier.padding(start = DepotTokens.SpaceMd, bottom = DepotTokens.SpaceSm - DepotTokens.GroupGap),
         )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(DepotTokens.RadiusLg),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        ) {
-            Column(Modifier.padding(vertical = DepotTokens.SpaceSm), content = content)
+        rows.forEachIndexed { i, row ->
+            ConnectedSurface(groupPosition(i, rows.size)) {
+                Column(Modifier.padding(vertical = DepotTokens.SpaceSm)) { row() }
+            }
         }
     }
 }
 
+/** Title, summary and a switch (check in the thumb while on); the whole row toggles. */
 @Composable
 private fun SwitchRow(title: String, summary: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
     val alpha = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = DepotTokens.DisabledAlpha)
     Row(
         Modifier.fillMaxWidth().heightIn(min = DepotTokens.TouchMin)
+            .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
             .padding(horizontal = DepotTokens.SpaceMd, vertical = DepotTokens.SpaceSm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DepotTokens.SpaceMd),
@@ -138,7 +167,16 @@ private fun SwitchRow(title: String, summary: String, checked: Boolean, enabled:
                 color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else alpha,
             )
         }
-        Switch(checked, onChange, enabled = enabled)
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
+            thumbContent = if (checked) {
+                { Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
+            } else {
+                null
+            },
+        )
     }
 }
 
@@ -187,6 +225,7 @@ private fun ConnectionBlock(s: SettingsUi, vm: AppDepotViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AboutBlock(vm: AppDepotViewModel, home: HomeUi) {
     val context = LocalContext.current
@@ -198,8 +237,10 @@ private fun AboutBlock(vm: AppDepotViewModel, home: HomeUi) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(DepotTokens.SpaceSm),
     ) {
-        LauncherIcon(DepotTokens.IconHeader)
-        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
+        ShapeBackdrop(AboutShape, DepotTokens.IconAboutBackdrop, MaterialTheme.colorScheme.primaryContainer) {
+            LauncherIcon(DepotTokens.IconHeader)
+        }
+        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLargeEmphasized)
         Text(stringResource(R.string.tagline), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Text(stringResource(R.string.version_line, vm.versionName, vm.versionCode.toInt()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
@@ -212,11 +253,11 @@ private fun AboutBlock(vm: AppDepotViewModel, home: HomeUi) {
             Text(status, style = MaterialTheme.typography.bodyMedium)
         }
         if (self?.state is AppState.UpdateAvailable) {
-            Button({ vm.install(SELF_SLUG) }, Modifier.heightIn(min = DepotTokens.TouchMin), enabled = self.model.activity == null) {
+            Button({ vm.install(SELF_SLUG) }, modifier = Modifier.heightIn(min = DepotTokens.TouchMin), enabled = self.model.activity == null, shapes = ButtonDefaults.shapes()) {
                 Text(stringResource(R.string.action_update))
             }
         } else {
-            OutlinedButton({ checked = true; vm.refresh() }, Modifier.heightIn(min = DepotTokens.TouchMin), enabled = !home.refreshing) {
+            OutlinedButton({ checked = true; vm.refresh() }, modifier = Modifier.heightIn(min = DepotTokens.TouchMin), enabled = !home.refreshing, shapes = ButtonDefaults.shapes()) {
                 Text(stringResource(R.string.check_for_updates))
             }
         }

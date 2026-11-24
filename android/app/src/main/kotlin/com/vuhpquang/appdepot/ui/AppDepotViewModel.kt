@@ -83,6 +83,8 @@ data class SettingsUi(
     val pairError: PairError? = null,
     /** Debuggable builds only; null hides the Server field. */
     val serverUrl: String? = null,
+    /** Wallpaper colours (Material You) instead of depot green. */
+    val dynamicColor: Boolean = false,
 )
 
 enum class PairError { BadCode, Failed }
@@ -390,6 +392,7 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         paired = app.pairing.isPaired,
         deviceName = deviceName(),
         serverUrl = if (isDebuggable) app.baseUrl else null,
+        dynamicColor = settings.dynamicColor,
     )
 
     private fun deviceName() = "${Build.MANUFACTURER} ${Build.MODEL}"
@@ -398,6 +401,11 @@ class AppDepotViewModel(application: Application) : AndroidViewModel(application
         settings.autoCheck = on
         if (on) BackgroundScheduler.schedule(app) else BackgroundScheduler.cancel(app)
         _settings.update { it.copy(autoCheck = on) }
+    }
+
+    fun setDynamicColor(on: Boolean) {
+        settings.dynamicColor = on
+        _settings.update { it.copy(dynamicColor = on) }
     }
 
     fun setAutoInstall(on: Boolean) {

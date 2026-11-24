@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,7 +49,8 @@ class MainActivity : ComponentActivity() {
         askForNotificationsOnce()
         enableEdgeToEdge()
         setContent {
-            AppDepotTheme {
+            val prefs by vm.settingsUi.collectAsStateWithLifecycle()
+            AppDepotTheme(dynamicColor = prefs.dynamicColor) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val nav = rememberNavController()
                     NavHost(nav, startDestination = "home") {
@@ -68,6 +72,7 @@ class MainActivity : ComponentActivity() {
                     whatsNew?.let { w ->
                         AlertDialog(
                             onDismissRequest = vm::dismissWhatsNew,
+                            icon = { Icon(Icons.Outlined.NewReleases, contentDescription = null) },
                             title = { Text(stringResource(R.string.whats_new_title, w.version)) },
                             text = { ReleaseNotes(w.notes, Modifier.verticalScroll(rememberScrollState())) },
                             confirmButton = { TextButton(vm::dismissWhatsNew) { Text(stringResource(R.string.action_ok)) } },

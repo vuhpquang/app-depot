@@ -17,7 +17,9 @@ val hasReleaseKey = signingProps.getProperty("storePassword") != null
 
 android {
     namespace = "com.vuhpquang.appdepot"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
 
     defaultConfig {
         applicationId = "com.vuhpquang.appdepot"
